@@ -59,8 +59,18 @@ export function ProductsManagement({
       title: "Product",
       render: (_, record) => (
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg flex items-center justify-center">
-            <Package className="w-5 h-5 text-primary" />
+          <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted">
+            {record.imageUrl ? (
+              <img
+                src={record.imageUrl}
+                alt={record.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                <Package className="w-6 h-6 text-primary" />
+              </div>
+            )}
           </div>
           <div>
             <p className="font-medium text-foreground">{record.name}</p>
@@ -199,24 +209,18 @@ export function ProductsManagement({
               key: "category",
               label: "Filter by category",
               options: [
-                { label: "All Categories", value: "" },
-                ...categories.filter((cat) => cat.isActive).map((cat) => ({ label: cat.name, value: cat.name })),
+                { label: "All Categories", value: "all" }, // ✅ Changed from "" to "all"
+                ...categories.filter((cat) => cat.isActive).map((cat) => ({ 
+                  label: cat.name, 
+                  value: cat.name 
+                })),
               ],
-              onFilter: setCategoryFilter,
+              onFilter: (value) => {
+                // Handle the "all" value properly
+                setCategoryFilter(value === "all" ? "" : value)
+              },
             },
           ],
-        }}
-        toolbar={{
-          title: `${products.length} Products`,
-          description: "Manage your product catalog",
-          actions: (
-            <div className="flex items-center gap-3">
-              <Button variant="outline" className="gap-2 bg-transparent">
-                <Filter className="w-4 h-4" />
-                Filters
-              </Button>
-            </div>
-          ),
         }}
         emptyState={{
           title: "No products found",

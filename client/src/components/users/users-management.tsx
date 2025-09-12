@@ -1,5 +1,3 @@
-"use client"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -81,11 +79,6 @@ export function UsersManagement({ users, loading, onCreateUser, onUpdateUser, on
           </Badge>
         )
       },
-    },
-    {
-      key: "managedCategory",
-      title: "Category Access",
-      render: (value) => <span className="text-sm text-muted-foreground">{value || "All Categories"}</span>,
     },
     {
       key: "isActive",
@@ -179,29 +172,31 @@ export function UsersManagement({ users, loading, onCreateUser, onUpdateUser, on
               key: "role",
               label: "Filter by role",
               options: [
-                { label: "All Roles", value: "" },
+                { label: "All Roles", value: "all" }, // ✅ Fixed: Changed from "" to "all"
                 ...USER_ROLES.map((role) => ({
                   label: role.label,
                   value: role.value,
                 })),
               ],
-              onFilter: (value) => console.log("Role filter:", value),
+              onFilter: (value) => {
+                // Handle the "all" value properly
+                console.log("Role filter:", value === "all" ? "" : value)
+              },
             },
             {
               key: "status",
               label: "Filter by status",
               options: [
-                { label: "All Status", value: "" },
+                { label: "All Status", value: "all" }, // ✅ Fixed: Changed from "" to "all"
                 { label: "Active", value: "active" },
                 { label: "Inactive", value: "inactive" },
               ],
-              onFilter: (value) => console.log("Status filter:", value),
+              onFilter: (value) => {
+                // Handle the "all" value properly
+                console.log("Status filter:", value === "all" ? "" : value)
+              },
             },
           ],
-        }}
-        toolbar={{
-          title: `${users.length} Users`,
-          description: "Manage system access and user permissions",
         }}
         emptyState={{
           title: "No users found",

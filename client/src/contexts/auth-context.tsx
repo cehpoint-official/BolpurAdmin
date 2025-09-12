@@ -1,5 +1,3 @@
-"use client"
-
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { FirebaseService } from "@/services/firebase-service"
 import { useToast } from "@/hooks/use-toast"
@@ -31,8 +29,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("admin-user")
       }
     }
-
-    FirebaseService.createDefaultAdmin()
 
     setLoading(false)
   }, [])

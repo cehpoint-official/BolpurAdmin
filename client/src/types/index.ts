@@ -2,6 +2,7 @@ export interface User {
   id: string
   name: string
   email: string
+  password: string
   role: "admin" | "subadmin"
   avatar?: string
   isActive: boolean
@@ -31,8 +32,8 @@ export interface Product {
   description: string
   tags: string[]
   available: boolean
-  createdAt: Date
-  updatedAt: Date
+  createdAt?: Date
+  updatedAt?: Date
   imageUrl?: string
 }
 

@@ -40,6 +40,7 @@ const navigationItems = [
     icon: Home,
     label: "Dashboard",
     desc: "Overview & Analytics",
+    roles: ["admin", "subadmin"], // Available for both admin and subadmin
   },
   {
     id: "products",
@@ -47,12 +48,14 @@ const navigationItems = [
     label: "Products",
     desc: "Catalog Management",
     countKey: "totalProducts" as const,
+    roles: ["admin", "subadmin"], // Available for both admin and subadmin
   },
   {
     id: "categories",
     icon: Tag,
     label: "Categories",
     desc: "Product Categories",
+    roles: ["admin", "subadmin"], // Available for both admin and subadmin
   },
   {
     id: "vendors",
@@ -60,6 +63,7 @@ const navigationItems = [
     label: "Vendors",
     desc: "Supplier Network",
     countKey: "totalVendors" as const,
+    roles: ["admin", "subadmin"], // Available for both admin and subadmin
   },
   {
     id: "orders",
@@ -67,6 +71,7 @@ const navigationItems = [
     label: "Orders",
     desc: "Order Management",
     countKey: "pendingOrders" as const,
+    roles: ["admin", "subadmin"], // Available for both admin and subadmin
   },
   {
     id: "users",
@@ -74,18 +79,21 @@ const navigationItems = [
     label: "Users",
     desc: "Access Control",
     countKey: "totalUsers" as const,
+    roles: ["admin"], // ✅ Only available for admin
   },
   {
     id: "analytics",
     icon: TrendingUp,
     label: "Analytics",
     desc: "Business Intelligence",
+    roles: ["admin", "subadmin"], // Available for both admin and subadmin
   },
   {
     id: "settings",
     icon: Settings,
     label: "Settings",
     desc: "System Configuration",
+    roles: ["admin"], // ✅ Only available for admin
   },
 ];
 
@@ -97,6 +105,11 @@ export function Sidebar({
 }: SidebarProps) {
   const { logout } = useAuth();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  // ✅ Filter navigation items based on user role
+  const allowedNavigationItems = navigationItems.filter(item => 
+    item.roles.includes(currentUser.role)
+  );
 
   // Handle mobile menu toggle
   const toggleMobileMenu = () => {
@@ -219,7 +232,8 @@ export function Sidebar({
         {/* Navigation */}
         <ScrollArea className="flex-1 p-4">
           <nav className="space-y-2">
-            {navigationItems.map((item) => {
+            {/* ✅ Use filtered navigation items */}
+            {allowedNavigationItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeView === item.id;
               const count = item.countKey ? metrics[item.countKey] : undefined;

@@ -1,12 +1,13 @@
-"use client"
-
+import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { VendorForm } from "./vendor-form"
-import { Plus, Building2, MapPin, User, Phone, Mail, Eye, Edit } from "lucide-react"
+import { Plus, Building2, MapPin, User, Phone, Mail, Search, Trash2 } from "lucide-react"
+import { DataTable } from "../ui/data-table"
 import type { Category, Vendor } from "@/types"
+import { formatDate } from "@/lib/formateDate"
 
 interface VendorsManagementProps {
   vendors: Vendor[]
@@ -17,9 +18,10 @@ interface VendorsManagementProps {
   onDeleteVendor: (id: string) => Promise<void>
 }
 
+
 export function VendorsManagement({
   vendors,
-  loading,
+  loading = false,
   categories, 
   onCreateVendor,
   onUpdateVendor,
@@ -27,6 +29,21 @@ export function VendorsManagement({
 }: VendorsManagementProps) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
+  const [searchValue, setSearchValue] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
+  // Filter vendors based on search
+  const filteredVendors = vendors.filter(vendor =>
+    vendor.name.toLowerCase().includes(searchValue.toLowerCase()) ||
+    vendor.location.toLowerCase().includes(searchValue.toLowerCase()) ||
+    vendor.contactPerson.toLowerCase().includes(searchValue.toLowerCase()) ||
+    vendor.category.some(cat => cat.toLowerCase().includes(searchValue.toLowerCase()))
+  )
+
+  // Paginate filtered vendors
+  const startIndex = (currentPage - 1) * pageSize
+  const paginatedVendors = filteredVendors.slice(startIndex, startIndex + pageSize)
 
   const handleEdit = (vendor: Vendor) => {
     setEditingVendor(vendor)
@@ -48,167 +65,183 @@ export function VendorsManagement({
     setEditingVendor(null)
   }
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-2">
-            <div className="h-8 bg-muted rounded w-48"></div>
-            <div className="h-4 bg-muted rounded w-64"></div>
-          </div>
-          <div className="h-10 bg-muted rounded w-32"></div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Card key={index} className="animate-pulse">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-muted rounded-xl"></div>
-                    <div className="space-y-2">
-                      <div className="h-5 bg-muted rounded w-24"></div>
-                      <div className="h-4 bg-muted rounded w-20"></div>
-                    </div>
-                  </div>
-                  <div className="h-6 bg-muted rounded w-16"></div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-4 bg-muted rounded w-full"></div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t">
-                  <div className="text-center space-y-1">
-                    <div className="h-6 bg-muted rounded w-8"></div>
-                    <div className="h-3 bg-muted rounded w-12"></div>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <div className="h-6 bg-muted rounded w-8"></div>
-                    <div className="h-3 bg-muted rounded w-12"></div>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <div className="h-6 bg-muted rounded w-8"></div>
-                    <div className="h-3 bg-muted rounded w-12"></div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this vendor? This action cannot be undone.")) {
+      try {
+        await onDeleteVendor(id)
+      } catch (error) {
+        console.error("Error deleting vendor:", error)
+      }
+    }
   }
 
+  const handlePageChange = (page: number, size: number) => {
+    setCurrentPage(page)
+    setPageSize(size)
+  }
+
+  const columns = [
+    {
+      key: "name" as keyof Vendor,
+      title: "Vendor Details",
+      render: (value: any, vendor: Vendor) => (
+        <div>
+          <div className="font-medium text-foreground flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-primary" />
+            {vendor.name}
+          </div>
+          <div className="text-sm text-muted-foreground mt-1">
+            <div className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {vendor.location}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "contactPerson" as keyof Vendor,
+      title: "Contact Information",
+      render: (value: any, vendor: Vendor) => (
+        <div>
+          <div className="font-medium text-foreground flex items-center gap-2">
+            <User className="w-4 h-4" />
+            {vendor.contactPerson}
+          </div>
+          <div className="text-sm text-muted-foreground space-y-1 mt-1">
+            <div className="flex items-center gap-1">
+              <Phone className="w-3 h-3" />
+              {vendor.phone}
+            </div>
+            {vendor.email && (
+              <div className="flex items-center gap-1">
+                <Mail className="w-3 h-3" />
+                {vendor.email}
+              </div>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "category" as keyof Vendor,
+      title: "Categories",
+      render: (value: any, vendor: Vendor) => (
+        <div className="flex flex-wrap gap-1">
+          {vendor.category.map((cat, index) => (
+            <Badge key={index} variant="secondary" className="text-xs">
+              {cat}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: "commission" as keyof Vendor,
+      title: "Commission",
+      render: (value: any, vendor: Vendor) => (
+        <div className="text-center">
+          <div className="text-lg font-bold text-foreground">{vendor.commission}%</div>
+        </div>
+      ),
+    },
+    {
+      key: "stats" as keyof Vendor,
+      title: "Statistics",
+      render: (value: any, vendor: Vendor) => (
+        <div className="space-y-1">
+          <div className="text-sm">
+            <span className="font-medium">{vendor.totalProducts || 0}</span>{" "}
+            <span className="text-muted-foreground">Products</span>
+          </div>
+          <div className="text-sm">
+            <span className="font-medium">{vendor.totalOrders || 0}</span>{" "}
+            <span className="text-muted-foreground">Orders</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "isActive" as keyof Vendor,
+      title: "Status",
+      render: (value: any, vendor: Vendor) => (
+        <Badge variant={vendor.isActive ? "default" : "secondary"}>
+          {vendor.isActive ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    },
+    {
+      key: "createdAt" as keyof Vendor,
+      title: "Created",
+      render: (value: any, vendor: Vendor) => (
+        <div className="text-sm text-muted-foreground">
+          {formatDate(vendor.createdAt)}
+        </div>
+      ),
+    },
+  ]
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Vendor Management</h1>
+          <h1 className="text-3xl font-bold text-foreground">Vendors</h1>
           <p className="text-muted-foreground">Manage your supplier network and partnerships</p>
         </div>
-        <Button onClick={() => setShowAddForm(true)} className="gap-2 bg-gradient-to-r from-primary to-accent">
+        <Button 
+          onClick={() => setShowAddForm(true)} 
+          className="gap-2 bg-gradient-to-r from-primary to-accent"
+        >
           <Plus className="w-4 h-4" />
           Add Vendor
         </Button>
       </div>
 
-      {/* Vendors Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {vendors.map((vendor) => (
-          <Card key={vendor.id} className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-accent/20 rounded-xl flex items-center justify-center">
-                    <Building2 className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg">{vendor.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground">{vendor.specialty.join(", ")}</p>
-                  </div>
-                </div>
-                <Badge className={vendor.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-                  {vendor.isActive ? "Active" : "Inactive"}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  {vendor.location}
-                </div>
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <User className="w-4 h-4 mr-2" />
-                  {vendor.contactPerson}
-                </div>
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <Phone className="w-4 h-4 mr-2" />
-                  {vendor.phone}
-                </div>
-                {vendor.email && (
-                  <div className="flex items-center text-sm text-muted-foreground">
-                    <Mail className="w-4 h-4 mr-2" />
-                    {vendor.email}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-border">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-foreground">{vendor.commission}%</p>
-                  <p className="text-xs text-muted-foreground">Commission</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-foreground">{vendor.totalProducts || 0}</p>
-                  <p className="text-xs text-muted-foreground">Products</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-foreground">{vendor.totalOrders || 0}</p>
-                  <p className="text-xs text-muted-foreground">Orders</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="flex-1 bg-transparent">
-                  <Eye className="w-4 h-4 mr-1" />
-                  View
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 bg-transparent"
-                  onClick={() => handleEdit(vendor)}
-                >
-                  <Edit className="w-4 h-4 mr-1" />
-                  Edit
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {vendors.length === 0 && (
-        <Card>
-          <CardContent className="text-center py-12">
-            <Building2 className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No vendors added yet</h3>
-            <p className="text-muted-foreground mb-4">Start building your supplier network by adding vendors</p>
+      {/* Vendors Table */}
+      <DataTable
+        data={paginatedVendors}
+        columns={columns}
+        loading={loading}
+        pagination={{
+          current: currentPage,
+          pageSize: pageSize,
+          total: filteredVendors.length,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50],
+          onPageChange: handlePageChange
+        }}
+        actions={{
+          onEdit: handleEdit,
+          onDelete: (vendor: Vendor) => handleDelete(vendor.id),
+        }}
+        filters={{
+          search: {
+            placeholder: "Search vendors...",
+            onSearch: setSearchValue,
+          }
+        }}
+        emptyState={{
+          title: "No vendors found",
+          description: "Start building your supplier network by adding vendors",
+          action: (
             <Button onClick={() => setShowAddForm(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Add Your First Vendor
+              <Plus className="h-4 w-4" />
+              Add Vendor
             </Button>
-          </CardContent>
-        </Card>
-      )}
+          )
+        }}
+      />
 
       {/* Vendor Form Modal */}
-      {showAddForm && <VendorForm vendor={editingVendor} categories={categories} onSubmit={handleFormSubmit} onCancel={handleFormCancel} />}
+      {showAddForm && (
+        <VendorForm 
+          vendor={editingVendor} 
+          categories={categories} 
+          onSubmit={handleFormSubmit} 
+          onCancel={handleFormCancel} 
+        />
+      )}
     </div>
   )
 }

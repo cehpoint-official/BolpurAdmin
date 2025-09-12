@@ -224,31 +224,33 @@ export function OrdersManagement({ orders, loading, onUpdateOrderStatus }: Order
               key: "status",
               label: "Filter by status",
               options: [
-                { label: "All Statuses", value: "" },
+                { label: "All Statuses", value: "all" }, // ✅ Fixed: Changed from "" to "all"
                 ...ORDER_STATUSES.map((status) => ({
                   label: status.label,
                   value: status.value,
                 })),
               ],
-              onFilter: setStatusFilter,
+              onFilter: (value) => {
+                // Handle the "all" value properly
+                setStatusFilter(value === "all" ? "" : value)
+              },
             },
             {
               key: "date",
               label: "Filter by date",
               options: [
-                { label: "All Time", value: "" },
+                { label: "All Time", value: "all" }, // ✅ Fixed: Changed from "" to "all"
                 { label: "Today", value: "today" },
                 { label: "Yesterday", value: "yesterday" },
                 { label: "This Week", value: "week" },
                 { label: "This Month", value: "month" },
               ],
-              onFilter: (value) => console.log("Date filter:", value),
+              onFilter: (value) => {
+                // Handle the "all" value properly
+                console.log("Date filter:", value === "all" ? "" : value)
+              },
             },
           ],
-        }}
-        toolbar={{
-          title: `${orders.length} Orders`,
-          description: "Manage customer orders and track delivery status",
         }}
         emptyState={{
           title: "No orders found",

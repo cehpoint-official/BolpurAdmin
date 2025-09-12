@@ -30,8 +30,6 @@ interface CategoriesManagementProps {
   onDeleteCategory: (id: string) => Promise<void>;
 }
 
-
-
 export function CategoriesManagement({
   categories,
   loading,
@@ -51,11 +49,13 @@ export function CategoriesManagement({
     isActive: true,
   });
 
+  console.log("Categories data:", categories);
+
   // Filter categories based on search
   const filteredCategories = categories.filter(
     (category) =>
       category.name.toLowerCase().includes(searchValue.toLowerCase()) ||
-      category.description.toLowerCase().includes(searchValue.toLowerCase())
+      (category.description && category.description.toLowerCase().includes(searchValue.toLowerCase()))
   );
 
   // Paginate filtered categories
@@ -101,7 +101,7 @@ export function CategoriesManagement({
     setEditingCategory(category);
     setFormData({
       name: category.name,
-      description: category.description,
+      description: category.description || "",
       isActive: category.isActive,
     });
     setIsCreateDialogOpen(true);
@@ -122,17 +122,22 @@ export function CategoriesManagement({
     setPageSize(size);
   };
 
+  const truncateDescription = (description: string | undefined | null) => {
+    if (!description || description.trim() === "") return "No description";
+    return description.length > 50 
+      ? description.slice(0, 50) + "..." 
+      : description;
+  };
+
   const columns = [
     {
       key: "name" as keyof Category,
       title: "Category Name",
-      render: (category: Category) => (
+      render: (value: any, record: Category) => ( 
         <div>
-          <div className="font-medium text-foreground">{category.name}</div>
+          <div className="font-medium text-foreground">{record.name}</div>
           <div className="text-sm text-muted-foreground">
-            {category.description.length > 20
-              ? category.description.slice(0, 20) + "..."
-              : category.description}
+            {truncateDescription(record.description)}
           </div>
         </div>
       ),
@@ -140,27 +145,27 @@ export function CategoriesManagement({
     {
       key: "isActive" as keyof Category,
       title: "Status",
-      render: ( category: Category) => (
-        <Badge variant={category.isActive ? "default" : "secondary"}>
-          {category.isActive ? "Active" : "Inactive"}
+      render: (value: any, record: Category) => ( 
+        <Badge variant={record.isActive ? "default" : "secondary"}>
+          {record.isActive ? "Active" : "Inactive"}
         </Badge>
       ),
     },
     {
       key: "createdAt" as keyof Category,
       title: "Created",
-      render: (category: Category) => (
+      render: (value: any, record: Category) => ( 
         <div className="text-sm text-muted-foreground">
-          {formatDate(category.createdAt)}
+          {formatDate(record.createdAt)}
         </div>
       ),
     },
     {
       key: "updatedAt" as keyof Category,
       title: "Last Updated",
-      render: (value: any, category: Category) => (
+      render: (value: any, record: Category) => ( 
         <div className="text-sm text-muted-foreground">
-          {formatDate(category.updatedAt)}
+          {formatDate(record.updatedAt)}
         </div>
       ),
     },
