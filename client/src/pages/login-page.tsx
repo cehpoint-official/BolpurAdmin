@@ -96,7 +96,7 @@ export function LoginPage() {
             {/* Login Button */}
             <Button
               type="submit"
-              className="w-full h-12 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-colors mt-8"
+              className="w-full h-12  bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 mt-8"
               disabled={loading || !email || !password}
             >
               {loading ? (

@@ -1,35 +1,37 @@
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { DataTable, type Column } from "@/components/ui/data-table"
-import { ProductForm } from "./product-form"
-import { Plus, Filter, Package, AlertTriangle } from "lucide-react"
-import type { Product, Vendor, Category } from "@/types"
-import { TIME_SLOTS } from "@/constants"
-import { useDataTable } from "@/hooks/use-data-table"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { ProductForm } from "./product-form";
+import { Plus, Package, AlertTriangle } from "lucide-react";
+import type { Product, Vendor, Category, TimeSlot } from "@/types";
+import { TIME_SLOTS } from "@/constants";
+import { useDataTable } from "@/hooks/use-data-table";
 
 interface ProductsManagementProps {
-  products: Product[]
-  vendors: Vendor[]
-  categories: Category[]
-  loading?: boolean
-  onCreateProduct: (product: Omit<Product, "id">) => Promise<void>
-  onUpdateProduct: (id: string, product: Partial<Product>) => Promise<void>
-  onDeleteProduct: (id: string) => Promise<void>
+  products: Product[];
+  vendors: Vendor[];
+  categories: Category[];
+  timeSlots: TimeSlot[];
+  loading?: boolean;
+  onCreateProduct: (product: Omit<Product, "id">) => Promise<void>;
+  onUpdateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+  onDeleteProduct: (id: string) => Promise<void>;
 }
 
 export function ProductsManagement({
   products,
   vendors,
   categories,
+  timeSlots,
   loading,
   onCreateProduct,
   onUpdateProduct,
   onDeleteProduct,
 }: ProductsManagementProps) {
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
-  const [categoryFilter, setCategoryFilter] = useState("")
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("");
 
   const {
     data: filteredProducts,
@@ -42,7 +44,7 @@ export function ProductsManagement({
   } = useDataTable<Product>({
     collectionName: "products",
     searchFields: ["name", "category", "vendorName"],
-  })
+  });
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -50,8 +52,8 @@ export function ProductsManagement({
       currency: "INR",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount)
-  }
+    }).format(amount);
+  };
 
   const columns: Column<Product>[] = [
     {
@@ -75,7 +77,9 @@ export function ProductsManagement({
           <div>
             <p className="font-medium text-foreground">{record.name}</p>
             {record.description && (
-              <p className="text-sm text-muted-foreground truncate max-w-xs">{record.description}</p>
+              <p className="text-sm text-muted-foreground truncate max-w-xs">
+                {record.description}
+              </p>
             )}
           </div>
         </div>
@@ -89,14 +93,20 @@ export function ProductsManagement({
     {
       key: "price",
       title: "Price",
-      render: (value) => <span className="font-medium">{formatCurrency(value)}</span>,
+      render: (value) => (
+        <span className="font-medium">{formatCurrency(value)}</span>
+      ),
     },
     {
       key: "stock",
       title: "Stock",
       render: (value, record) => (
         <div className="flex items-center gap-2">
-          <span className={`${value < 10 ? "text-red-600" : "text-foreground"}`}>{value}</span>
+          <span
+            className={`${value < 10 ? "text-red-600" : "text-foreground"}`}
+          >
+            {value}
+          </span>
           {value < 10 && <AlertTriangle className="w-4 h-4 text-red-500" />}
         </div>
       ),
@@ -114,59 +124,71 @@ export function ProductsManagement({
       key: "timeSlot",
       title: "Time Slot",
       render: (value) => {
-        const slot = TIME_SLOTS.find((s) => s.value === value)
+        const slot = TIME_SLOTS.find((s) => s.value === value);
         return (
           <div className="flex items-center gap-1">
             <span>{slot?.icon}</span>
             <span className="text-sm capitalize">{value}</span>
           </div>
-        )
+        );
       },
     },
     {
       key: "available",
       title: "Status",
       render: (value) => (
-        <Badge className={value ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+        <Badge
+          className={
+            value ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+          }
+        >
           {value ? "Available" : "Unavailable"}
         </Badge>
       ),
     },
-  ]
+  ];
 
   const handleEdit = (product: Product) => {
-    setEditingProduct(product)
-    setShowAddForm(true)
-  }
+    setEditingProduct(product);
+    setShowAddForm(true);
+  };
 
   const handleDelete = async (product: Product) => {
-    if (confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
-      await onDeleteProduct(product.id)
+    if (
+      confirm(
+        `Are you sure you want to delete "${product.name}"? This action cannot be undone.`
+      )
+    ) {
+      await onDeleteProduct(product.id);
     }
-  }
+  };
 
   const handleFormSubmit = async (productData: Omit<Product, "id">) => {
     if (editingProduct) {
-      await onUpdateProduct(editingProduct.id, productData)
+      await onUpdateProduct(editingProduct.id, productData);
     } else {
-      await onCreateProduct(productData)
+      await onCreateProduct(productData);
     }
-    setShowAddForm(false)
-    setEditingProduct(null)
-  }
+    setShowAddForm(false);
+    setEditingProduct(null);
+  };
 
   const handleFormCancel = () => {
-    setShowAddForm(false)
-    setEditingProduct(null)
-  }
+    setShowAddForm(false);
+    setEditingProduct(null);
+  };
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Product Management</h1>
-          <p className="text-muted-foreground">Manage your product catalog and inventory</p>
+          <h1 className="text-2xl font-bold text-foreground">
+            Product Management
+          </h1>
+          <p className="text-muted-foreground">
+            Manage your product catalog and inventory
+          </p>
         </div>
         <Button
           onClick={() => setShowAddForm(true)}
@@ -210,21 +232,24 @@ export function ProductsManagement({
               label: "Filter by category",
               options: [
                 { label: "All Categories", value: "all" }, // ✅ Changed from "" to "all"
-                ...categories.filter((cat) => cat.isActive).map((cat) => ({ 
-                  label: cat.name, 
-                  value: cat.name 
-                })),
+                ...categories
+                  .filter((cat) => cat.isActive)
+                  .map((cat) => ({
+                    label: cat.name,
+                    value: cat.name,
+                  })),
               ],
               onFilter: (value) => {
                 // Handle the "all" value properly
-                setCategoryFilter(value === "all" ? "" : value)
+                setCategoryFilter(value === "all" ? "" : value);
               },
             },
           ],
         }}
         emptyState={{
           title: "No products found",
-          description: "Get started by adding your first product to the catalog",
+          description:
+            "Get started by adding your first product to the catalog",
           action: (
             <Button onClick={() => setShowAddForm(true)} className="gap-2">
               <Plus className="w-4 h-4" />
@@ -240,10 +265,11 @@ export function ProductsManagement({
           product={editingProduct}
           vendors={vendors}
           categories={categories}
+          timeSlots={timeSlots}
           onSubmit={handleFormSubmit}
           onCancel={handleFormCancel}
         />
       )}
     </div>
-  )
+  );
 }

@@ -8,19 +8,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Package2, Upload, X, Loader2, Image as ImageIcon } from "lucide-react"
-import type { Product, Vendor, Category } from "@/types"
-import { TIME_SLOTS } from "@/constants"
-
+import type { Product, Vendor, Category, TimeSlot } from "@/types"
 
 interface ProductFormProps {
   product?: Product | null
   vendors: Vendor[]
+  timeSlots: TimeSlot[]
   categories: Category[]
   onSubmit: (product: Omit<Product, "id">) => Promise<void>
   onCancel: () => void
 }
 
-export function ProductForm({ product, vendors, categories, onSubmit, onCancel }: ProductFormProps) {
+export function ProductForm({ product, vendors, timeSlots, categories, onSubmit, onCancel }: ProductFormProps) {
   const [loading, setLoading] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
   const [formData, setFormData] = useState({
@@ -29,7 +28,7 @@ export function ProductForm({ product, vendors, categories, onSubmit, onCancel }
     price: "",
     stock: "",
     vendorId: "",
-    timeSlot: "",
+    timeSlotId: "",
     description: "",
     tags: "",
     available: true,
@@ -45,7 +44,7 @@ export function ProductForm({ product, vendors, categories, onSubmit, onCancel }
         price: product.price.toString(),
         stock: product.stock.toString(),
         vendorId: product.vendorId,
-        timeSlot: product.timeSlot,
+        timeSlotId: product.timeSlotId,
         description: product.description || "",
         tags: product.tags?.join(", ") || "",
         available: product.available,
@@ -55,43 +54,39 @@ export function ProductForm({ product, vendors, categories, onSubmit, onCancel }
     }
   }, [product])
 
-// Cloudinary upload function
-const uploadImageToCloudinary = async (file: File) => {
-  const cloudinaryData = new FormData()
-  cloudinaryData.append("file", file)
-  cloudinaryData.append("upload_preset", "Images")
-  cloudinaryData.append("asset_folder", "ProductsImage")
-  cloudinaryData.append("cloud_name", "dqoo1d1ip")
-  
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/dqoo1d1ip/image/upload`,
-    {
-      method: 'POST',
-      body: cloudinaryData,
-    }
-  )
+  const uploadImageToCloudinary = async (file: File) => {
+    const cloudinaryData = new FormData()
+    cloudinaryData.append("file", file)
+    cloudinaryData.append("upload_preset", "Images")
+    cloudinaryData.append("asset_folder", "ProductsImage")
+    cloudinaryData.append("cloud_name", "dqoo1d1ip")
+    
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/dqoo1d1ip/image/upload`,
+      {
+        method: 'POST',
+        body: cloudinaryData,
+      }
+    )
 
-  if (!response.ok) {
-    throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return data.secure_url
   }
 
-  const data = await response.json()
-  return data.secure_url
-}
-
-  // Handle image file selection and upload
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]
     if (!validTypes.includes(file.type)) {
       alert("Please upload a valid image file (JPEG, PNG, GIF, WebP)")
       return
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert("Image size must be less than 5MB")
       return
@@ -100,17 +95,13 @@ const uploadImageToCloudinary = async (file: File) => {
     try {
       setImageUploading(true)
       
-      // Create preview
       const previewUrl = URL.createObjectURL(file)
       setImagePreview(previewUrl)
 
-      // Upload to Cloudinary
       const cloudinaryUrl = await uploadImageToCloudinary(file)
       
-      // Update form data
       updateFormData("imageUrl", cloudinaryUrl)
       
-      // Clean up preview URL and set Cloudinary URL
       URL.revokeObjectURL(previewUrl)
       setImagePreview(cloudinaryUrl)
       
@@ -118,16 +109,15 @@ const uploadImageToCloudinary = async (file: File) => {
       console.error("Error uploading image:", error)
       alert("Failed to upload image. Please try again.")
       setImagePreview("")
-      updateFormData("imgUrl", "")
+      updateFormData("imageUrl", "")
     } finally {
       setImageUploading(false)
     }
   }
 
-  // Remove uploaded image
   const handleRemoveImage = () => {
     setImagePreview("")
-    updateFormData("imgUrl", "")
+    updateFormData("imageUrl", "")
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,6 +130,11 @@ const uploadImageToCloudinary = async (file: File) => {
         throw new Error("Please select a valid vendor")
       }
 
+      const selectedTimeSlot = timeSlots.find((slot) => slot.id === formData.timeSlotId)
+      if (!selectedTimeSlot) {
+        throw new Error("Please select a valid time slot")
+      }
+
       const productData = {
         name: formData.name,
         category: formData.category,
@@ -147,11 +142,11 @@ const uploadImageToCloudinary = async (file: File) => {
         stock: Number.parseInt(formData.stock),
         vendorId: formData.vendorId,
         vendorName: vendor.name,
-        timeSlot: formData.timeSlot as "morning" | "afternoon" | "evening",
+        timeSlotId: formData.timeSlotId,
         description: formData.description,
         tags: formData.tags ? formData.tags.split(",").map((tag) => tag.trim()) : [],
         available: formData.available,
-        imageUrl: formData.imageUrl || "",
+        imageUrl: formData.imageUrl,
       }
 
       await onSubmit(productData)
@@ -178,7 +173,6 @@ const uploadImageToCloudinary = async (file: File) => {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Image Upload Section */}
           <div className="space-y-2">
             <Label>Product Image</Label>
             
@@ -322,7 +316,7 @@ const uploadImageToCloudinary = async (file: File) => {
                   <SelectValue placeholder="Select vendor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vendors.map((vendor) => (
+                  {vendors.filter(vendor => vendor.isActive).map((vendor) => (
                     <SelectItem key={vendor.id} value={vendor.id}>
                       {vendor.name} - {vendor.location}
                     </SelectItem>
@@ -333,13 +327,16 @@ const uploadImageToCloudinary = async (file: File) => {
 
             <div className="space-y-2">
               <Label htmlFor="timeSlot">Time Slot *</Label>
-              <Select value={formData.timeSlot} onValueChange={(value) => updateFormData("timeSlot", value)} required disabled={loading}>
+              <Select value={formData.timeSlotId} onValueChange={(value) => updateFormData("timeSlotId", value)} required disabled={loading}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select time slot" />
                 </SelectTrigger>
                 <SelectContent>
-                  {TIME_SLOTS.map((slot) => (
-                    <SelectItem key={slot.value} value={slot.value}>
+                  {timeSlots
+                    .filter(slot => slot.isActive)
+                    .sort((a, b) => a.order - b.order)
+                    .map((slot) => (
+                    <SelectItem key={slot.id} value={slot.id}>
                       {slot.icon} {slot.label}
                     </SelectItem>
                   ))}

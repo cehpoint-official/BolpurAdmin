@@ -20,6 +20,20 @@ export interface Category {
   updatedAt?: Date
 }
 
+// ✅ Updated TimeSlot interface
+export interface TimeSlot {
+  id: string
+  name: string
+  label: string
+  icon: string
+  startTime: string // Format: "HH:MM"
+  endTime: string // Format: "HH:MM"
+  isActive: boolean
+  order: number // For sorting
+  createdAt?: Date
+  updatedAt?: Date
+}
+
 export interface Product {
   id: string
   name: string
@@ -28,7 +42,7 @@ export interface Product {
   stock: number
   vendorId: string
   vendorName: string
-  timeSlot: "morning" | "afternoon" | "evening"
+  timeSlotId: string 
   description: string
   tags: string[]
   available: boolean
@@ -80,9 +94,7 @@ export interface Order {
 }
 
 export interface TimeRules {
-  morning: string[]
-  afternoon: string[]
-  evening: string[]
+  [timeSlotId: string]: string[] // timeSlotId -> category IDs
 }
 
 export interface DashboardMetrics {

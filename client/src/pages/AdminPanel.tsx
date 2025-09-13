@@ -14,7 +14,7 @@ import { Settings } from "@/components/settings/settings"
 import { AuthProvider, useAuth } from "@/contexts/auth-context"
 import { FirebaseService } from "@/services/firebase-service"
 import { useToast } from "@/hooks/use-toast"
-import type { Product, Vendor, Order, User, Category, TimeRules, DashboardMetrics } from "@/types"
+import type { Product, Vendor, Order, User, Category, TimeRules, DashboardMetrics, TimeSlot } from "@/types"
 import { LoginPage } from "./login-page"
 
 function AdminPanelContent() {
@@ -32,11 +32,8 @@ function AdminPanelContent() {
   const [orders, setOrders] = useState<Order[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [timeRules, setTimeRules] = useState<TimeRules>({
-    morning: ["Vegetables", "Fruits", "Dairy"],
-    afternoon: ["Groceries", "Medicine", "Snacks", "Personal Care", "Household"],
-    evening: ["Biryani", "Snacks", "Beverages"],
-  })
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
+  const [timeRules, setTimeRules] = useState<TimeRules>({})
 
   // Loading states
   const [loading, setLoading] = useState({
@@ -46,6 +43,7 @@ function AdminPanelContent() {
     orders: false,
     users: false,
     categories: false,
+    timeSlots: false,
   })
 
   const { toast } = useToast()
@@ -110,6 +108,13 @@ function AdminPanelContent() {
     })
     unsubscribers.push(unsubscribeCategories)
 
+    // Time Slots listener
+    const unsubscribeTimeSlots = FirebaseService.subscribeToCollection<TimeSlot>("timeSlots", (timeSlotsData) => {
+      setTimeSlots(timeSlotsData)
+      setLoading((prev) => ({ ...prev, timeSlots: false }))
+    })
+    unsubscribers.push(unsubscribeTimeSlots)
+
     // Load time rules
     FirebaseService.getTimeRules().then(setTimeRules)
 
@@ -166,6 +171,64 @@ function AdminPanelContent() {
     }
   }, [orders, products])
 
+  // Calculate additional dashboard metrics
+  const additionalMetrics = useMemo(() => {
+    // Get top category by order count
+    const categoryOrderCount: { [key: string]: number } = {}
+    orders.forEach(order => {
+      order.items.forEach(item => {
+        const product = products.find(p => p.id === item.productId)
+        if (product) {
+          categoryOrderCount[product.category] = (categoryOrderCount[product.category] || 0) + item.quantity
+        }
+      })
+    })
+
+    const topCategory = Object.entries(categoryOrderCount).reduce(
+      (max, [category, count]) => count > max.count ? { category, count } : max,
+      { category: "N/A", count: 0 }
+    )
+
+    // Calculate average order value
+    const avgOrderValue = orders.length > 0 
+      ? orders.reduce((sum, order) => sum + order.total, 0) / orders.length 
+      : 0
+
+    // Calculate completion rate
+    const completionRate = orders.length > 0
+      ? Math.round((orders.filter(order => order.status === "delivered").length / orders.length) * 100)
+      : 0
+
+    return {
+      topCategory: topCategory.category,
+      avgOrderValue,
+      completionRate,
+    }
+  }, [orders, products])
+
+  // Refresh function for dashboard
+  const handleRefreshData = async () => {
+    setLoading(prev => ({ ...prev, global: true }))
+    try {
+      // Force refresh time rules
+      const freshTimeRules = await FirebaseService.getTimeRules()
+      setTimeRules(freshTimeRules)
+      
+      toast({
+        title: "Success",
+        description: "Dashboard data refreshed successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to refresh data",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(prev => ({ ...prev, global: false }))
+    }
+  }
+
   // View metrics for topbar
   const viewMetrics = {
     dashboard: "Real-time",
@@ -178,7 +241,7 @@ function AdminPanelContent() {
     categories: `${categories.length} categories`,
   }
 
-  // CRUD operations
+  // All CRUD operations remain the same...
   const handleCreateProduct = async (productData: Omit<Product, "id">) => {
     try {
       await FirebaseService.create("products", productData)
@@ -349,26 +412,8 @@ function AdminPanelContent() {
     }
   }
 
-  const handleUpdateTimeRules = async (rules: TimeRules) => {
-    try {
-      await FirebaseService.updateTimeRules(rules)
-      setTimeRules(rules)
-      toast({
-        title: "Success",
-        description: "Time rules updated successfully",
-      })
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update time rules",
-        variant: "destructive",
-      })
-      throw error
-    }
-  }
-
   const handleCreateCategory = async (categoryData: Omit<Category, "id">) => {
-      try {
+    try {
       await FirebaseService.create("categories", categoryData)
       toast({
         title: "Success",
@@ -418,6 +463,75 @@ function AdminPanelContent() {
     }
   }
 
+  const handleCreateTimeSlot = async (timeSlotData: Omit<TimeSlot, "id">) => {
+    try {
+      await FirebaseService.create("timeSlots", timeSlotData)
+      toast({
+        title: "Success",
+        description: `Time slot "${timeSlotData.name}" created successfully`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create time slot",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleUpdateTimeSlot = async (id: string, timeSlotData: Partial<TimeSlot>) => {
+    try {
+      await FirebaseService.update("timeSlots", id, timeSlotData)
+      toast({
+        title: "Success",
+        description: "Time slot updated successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update time slot",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleDeleteTimeSlot = async (id: string) => {
+    try {
+      await FirebaseService.delete("timeSlots", id)
+      toast({
+        title: "Success",
+        description: "Time slot deleted successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete time slot",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleUpdateTimeRules = async (rules: TimeRules) => {
+    try {
+      await FirebaseService.updateTimeRules(rules)
+      setTimeRules(rules)
+      toast({
+        title: "Success",
+        description: "Time rules updated successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update time rules",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
   // Render main content based on active view
   const renderMainContent = () => {
     switch (activeView) {
@@ -425,10 +539,12 @@ function AdminPanelContent() {
         return (
           <Dashboard
             metrics={dashboardMetrics}
+            additionalMetrics={additionalMetrics}
             orders={orders}
-            currentUser={user}
+            currentUser={user!} // Non-null assertion since we check user exists above
             loading={loading.global}
             onViewChange={setActiveView}
+            onRefresh={handleRefreshData}
           />
         )
       case "products":
@@ -437,6 +553,7 @@ function AdminPanelContent() {
             products={products}
             vendors={vendors}
             categories={categories}
+            timeSlots={timeSlots}
             loading={loading.products}
             onCreateProduct={handleCreateProduct}
             onUpdateProduct={handleUpdateProduct}
@@ -456,7 +573,11 @@ function AdminPanelContent() {
         )
       case "orders":
         return (
-          <OrdersManagement orders={orders} loading={loading.orders} onUpdateOrderStatus={handleUpdateOrderStatus} />
+          <OrdersManagement 
+            orders={orders} 
+            loading={loading.orders} 
+            onUpdateOrderStatus={handleUpdateOrderStatus} 
+          />
         )
       case "users":
         return (
@@ -481,15 +602,28 @@ function AdminPanelContent() {
       case "analytics":
         return <Analytics loading={loading.global} />
       case "settings":
-        return <Settings timeRules={timeRules} onUpdateTimeRules={handleUpdateTimeRules} loading={loading.global} />
+        return (
+          <Settings 
+            timeRules={timeRules}
+            categories={categories}
+            timeSlots={timeSlots}
+            onUpdateTimeRules={handleUpdateTimeRules}
+            onCreateTimeSlot={handleCreateTimeSlot}
+            onUpdateTimeSlot={handleUpdateTimeSlot}
+            onDeleteTimeSlot={handleDeleteTimeSlot}
+            loading={loading.global}
+          />
+        )
       default:
         return (
           <Dashboard
             metrics={dashboardMetrics}
+            additionalMetrics={additionalMetrics}
             orders={orders}
-            currentUser={user}
+            currentUser={user!}
             loading={loading.global}
             onViewChange={setActiveView}
+            onRefresh={handleRefreshData}
           />
         )
     }
@@ -510,7 +644,6 @@ function AdminPanelContent() {
   return (
     <LayoutProvider>
       <div className="flex h-screen bg-background overflow-hidden">
-        {/* Sidebar */}
         <Sidebar
           activeView={activeView}
           onViewChange={setActiveView}
@@ -523,9 +656,7 @@ function AdminPanelContent() {
           }}
         />
 
-        {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* TopBar */}
           <TopBar
             activeView={activeView}
             darkMode={darkMode}
@@ -536,12 +667,10 @@ function AdminPanelContent() {
             viewMetrics={viewMetrics}
           />
 
-          {/* Main Content Area */}
           <main className="flex-1 overflow-y-auto">{renderMainContent()}</main>
         </div>
       </div>
 
-      {/* Toast Notifications */}
       <Toaster />
     </LayoutProvider>
   )

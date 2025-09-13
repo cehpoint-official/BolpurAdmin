@@ -1,29 +1,104 @@
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { Order } from "@/types"
 
 interface SalesChartProps {
-  data?: Array<{
-    day: string
-    revenue: number
-    orders: number
-  }>
+  orders?: Order[]
   loading?: boolean
 }
 
-export function SalesChart({ data, loading }: SalesChartProps) {
-  const defaultData = [
-    { day: "Mon", revenue: 2400, orders: 12 },
-    { day: "Tue", revenue: 1398, orders: 8 },
-    { day: "Wed", revenue: 9800, orders: 18 },
-    { day: "Thu", revenue: 3908, orders: 14 },
-    { day: "Fri", revenue: 4800, orders: 22 },
-    { day: "Sat", revenue: 3800, orders: 16 },
-    { day: "Sun", revenue: 4300, orders: 19 },
-  ]
+export function SalesChart({ orders = [], loading }: SalesChartProps) {
+  const [timeRange, setTimeRange] = useState("7days")
 
-  const chartData = data || defaultData
-  const maxRevenue = Math.max(...chartData.map((d) => d.revenue))
-  const maxOrders = Math.max(...chartData.map((d) => d.orders))
+  // Generate dynamic chart data based on orders and time range
+  const getChartData = () => {
+    const now = new Date()
+    let days: Date[] = []
+    let dayLabels: string[] = []
+
+    switch (timeRange) {
+      case "7days":
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date(now)
+          date.setDate(date.getDate() - i)
+          days.push(date)
+          dayLabels.push(date.toLocaleDateString('en-US', { weekday: 'short' }))
+        }
+        break
+      case "30days":
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date(now)
+          date.setDate(date.getDate() - i)
+          days.push(date)
+          dayLabels.push(date.getDate().toString())
+        }
+        break
+      case "3months":
+        for (let i = 11; i >= 0; i--) {
+          const date = new Date(now)
+          date.setMonth(date.getMonth() - i)
+          days.push(date)
+          dayLabels.push(date.toLocaleDateString('en-US', { month: 'short' }))
+        }
+        break
+      default:
+        days = []
+        dayLabels = []
+    }
+
+    return days.map((date, index) => {
+      let dayOrders: Order[] = []
+
+      if (timeRange === "3months") {
+        // For months, get all orders in that month
+        dayOrders = orders.filter(order => {
+          const orderDate = order.createdAt?.toDate?.() || new Date(order.createdAt)
+          return orderDate.getMonth() === date.getMonth() && 
+                 orderDate.getFullYear() === date.getFullYear()
+        })
+      } else {
+        // For days, get orders on that specific day
+        const dayStart = new Date(date)
+        dayStart.setHours(0, 0, 0, 0)
+        const dayEnd = new Date(date)
+        dayEnd.setHours(23, 59, 59, 999)
+
+        dayOrders = orders.filter(order => {
+          const orderDate = order.createdAt?.toDate?.() || new Date(order.createdAt)
+          return orderDate >= dayStart && orderDate <= dayEnd
+        })
+      }
+
+      const revenue = dayOrders.reduce((sum, order) => sum + order.total, 0)
+      const orderCount = dayOrders.length
+
+      return {
+        day: dayLabels[index],
+        revenue,
+        orders: orderCount,
+        date: date.toISOString().split('T')[0] // For tooltips
+      }
+    })
+  }
+
+  const chartData = getChartData()
+  const maxRevenue = Math.max(...chartData.map((d) => d.revenue), 1) // Minimum 1 to avoid division by zero
+  const maxOrders = Math.max(...chartData.map((d) => d.orders), 1) // Minimum 1 to avoid division by zero
+
+  // Calculate period totals
+  const totalRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0)
+  const totalOrders = chartData.reduce((sum, d) => sum + d.orders, 0)
+
+  // Get period label
+  const getPeriodLabel = () => {
+    switch (timeRange) {
+      case "7days": return "Last 7 Days"
+      case "30days": return "Last 30 Days"
+      case "3months": return "Last 3 Months"
+      default: return "Period"
+    }
+  }
 
   if (loading) {
     return (
@@ -47,9 +122,11 @@ export function SalesChart({ data, loading }: SalesChartProps) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
         <div>
           <CardTitle className="text-lg font-semibold">Sales Overview</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">Revenue and order trends</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Revenue and order trends • {getPeriodLabel()}
+          </p>
         </div>
-        <Select defaultValue="7days">
+        <Select value={timeRange} onValueChange={setTimeRange}>
           <SelectTrigger className="w-48">
             <SelectValue />
           </SelectTrigger>
@@ -73,52 +150,95 @@ export function SalesChart({ data, loading }: SalesChartProps) {
                 <span className="text-muted-foreground">Orders</span>
               </div>
             </div>
+            {chartData.length === 0 && (
+              <span className="text-sm text-muted-foreground">No data available</span>
+            )}
           </div>
 
           <div className="relative h-60 flex items-end justify-around gap-2 px-4">
-            {chartData.map((data, index) => (
-              <div key={data.day} className="flex flex-col items-center gap-2 flex-1">
-                <div className="flex items-end gap-1 h-48">
-                  {/* Revenue Bar */}
-                  <div
-                    className="bg-primary rounded-t-lg w-6 transition-all duration-500 hover:opacity-80 cursor-pointer relative group"
-                    style={{ height: `${(data.revenue / maxRevenue) * 180}px` }}
-                    title={`Revenue: ₹${data.revenue.toLocaleString()}`}
-                  >
-                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-background border border-border rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                      ₹{data.revenue.toLocaleString()}
+            {chartData.length > 0 ? (
+              chartData.map((data, index) => (
+                <div key={`${data.day}-${index}`} className="flex flex-col items-center gap-2 flex-1">
+                  <div className="flex items-end gap-1 h-48">
+                    {/* Revenue Bar */}
+                    <div
+                      className="bg-primary rounded-t-lg transition-all duration-500 hover:opacity-80 cursor-pointer relative group"
+                      style={{ 
+                        height: `${Math.max((data.revenue / maxRevenue) * 180, 2)}px`,
+                        width: timeRange === "30days" ? "8px" : "24px"
+                      }}
+                      title={`Revenue: ₹${data.revenue.toLocaleString()} on ${data.date}`}
+                    >
+                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-background border border-border rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                        ₹{data.revenue.toLocaleString()}
+                      </div>
+                    </div>
+
+                    {/* Orders Bar */}
+                    <div
+                      className="bg-accent rounded-t-lg transition-all duration-500 hover:opacity-80 cursor-pointer relative group"
+                      style={{ 
+                        height: `${Math.max((data.orders / maxOrders) * 180, 2)}px`,
+                        width: timeRange === "30days" ? "8px" : "24px"
+                      }}
+                      title={`Orders: ${data.orders} on ${data.date}`}
+                    >
+                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-background border border-border rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        {data.orders} orders
+                      </div>
                     </div>
                   </div>
 
-                  {/* Orders Bar */}
-                  <div
-                    className="bg-accent rounded-t-lg w-6 transition-all duration-500 hover:opacity-80 cursor-pointer relative group"
-                    style={{ height: `${(data.orders / maxOrders) * 180}px` }}
-                    title={`Orders: ${data.orders}`}
-                  >
-                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-background border border-border rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                      {data.orders} orders
-                    </div>
-                  </div>
+                  <span className="text-xs font-medium text-muted-foreground truncate">
+                    {data.day}
+                  </span>
                 </div>
-
-                <span className="text-sm font-medium text-muted-foreground">{data.day}</span>
+              ))
+            ) : (
+              <div className="flex items-center justify-center h-48 w-full">
+                <div className="text-center">
+                  <div className="text-4xl mb-2">📊</div>
+                  <p className="text-muted-foreground">No sales data available</p>
+                  <p className="text-sm text-muted-foreground">Orders will appear here once placed</p>
+                </div>
               </div>
-            ))}
+            )}
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4 text-center">
             <div className="p-3 bg-primary/10 rounded-lg">
               <p className="text-lg font-bold text-primary">
-                ₹{chartData.reduce((sum, d) => sum + d.revenue, 0).toLocaleString()}
+                ₹{totalRevenue.toLocaleString()}
               </p>
               <p className="text-sm text-muted-foreground">Total Revenue</p>
             </div>
             <div className="p-3 bg-accent/10 rounded-lg">
-              <p className="text-lg font-bold text-accent">{chartData.reduce((sum, d) => sum + d.orders, 0)}</p>
+              <p className="text-lg font-bold text-accent">{totalOrders}</p>
               <p className="text-sm text-muted-foreground">Total Orders</p>
             </div>
           </div>
+
+          {/* Additional Stats */}
+          {totalOrders > 0 && (
+            <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
+              <div className="p-2 bg-muted/50 rounded">
+                <p className="font-semibold">₹{Math.round(totalRevenue / totalOrders).toLocaleString()}</p>
+                <p className="text-muted-foreground">Avg Order</p>
+              </div>
+              <div className="p-2 bg-muted/50 rounded">
+                <p className="font-semibold">
+                  {Math.max(...chartData.map(d => d.orders))}
+                </p>
+                <p className="text-muted-foreground">Peak Day</p>
+              </div>
+              <div className="p-2 bg-muted/50 rounded">
+                <p className="font-semibold">
+                  ₹{Math.max(...chartData.map(d => d.revenue)).toLocaleString()}
+                </p>
+                <p className="text-muted-foreground">Best Revenue</p>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

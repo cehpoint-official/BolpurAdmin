@@ -2,30 +2,153 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Timer, Bell, Globe, Shield, CheckCircle } from "lucide-react"
-import type { TimeRules } from "@/types"
-import { TIME_SLOTS, DEFAULT_CATEGORIES } from "@/constants"
+import { Timer, Globe, CheckCircle, Plus, Trash2, Edit, Clock, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import type { TimeRules, Category, TimeSlot } from "@/types"
 
 interface SettingsProps {
   timeRules: TimeRules
+  categories: Category[]
+  timeSlots: TimeSlot[]
   onUpdateTimeRules: (rules: TimeRules) => Promise<void>
+  onCreateTimeSlot: (timeSlot: Omit<TimeSlot, "id">) => Promise<void>
+  onUpdateTimeSlot: (id: string, timeSlot: Partial<TimeSlot>) => Promise<void>
+  onDeleteTimeSlot: (id: string) => Promise<void>
   loading?: boolean
 }
 
-export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProps) {
+// Predefined time slot templates
+const TIME_SLOT_TEMPLATES = [
+  { value: "morning", label: "Morning", icon: "🌅", defaultStart: "06:00", defaultEnd: "12:00" },
+  { value: "afternoon", label: "Afternoon", icon: "☀️", defaultStart: "12:00", defaultEnd: "18:00" },
+  { value: "evening", label: "Evening", icon: "🌆", defaultStart: "18:00", defaultEnd: "22:00" },
+  { value: "night", label: "Night", icon: "🌙", defaultStart: "22:00", defaultEnd: "06:00" },
+]
+
+// Time options for 12-hour format
+const generateTimeOptions = () => {
+  const times = []
+  for (let hour = 1; hour <= 12; hour++) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      const hourStr = hour.toString()
+      const minuteStr = minute.toString().padStart(2, '0')
+      times.push(`${hourStr}:${minuteStr} AM`)
+      times.push(`${hourStr}:${minuteStr} PM`)
+    }
+  }
+  return times
+}
+
+// Convert 12-hour to 24-hour format
+const convertTo24Hour = (time12: string) => {
+  const [time, period] = time12.split(' ')
+  const [hours, minutes] = time.split(':')
+  let hour24 = parseInt(hours)
+  
+  if (period === 'AM' && hour24 === 12) {
+    hour24 = 0
+  } else if (period === 'PM' && hour24 !== 12) {
+    hour24 += 12
+  }
+  
+  return `${hour24.toString().padStart(2, '0')}:${minutes}`
+}
+
+// Convert 24-hour to 12-hour format
+const convertTo12Hour = (time24: string) => {
+  if (!time24) return ""
+  
+  const [hours, minutes] = time24.split(':')
+  let hour12 = parseInt(hours)
+  const period = hour12 >= 12 ? 'PM' : 'AM'
+  
+  if (hour12 === 0) {
+    hour12 = 12
+  } else if (hour12 > 12) {
+    hour12 -= 12
+  }
+  
+  return `${hour12}:${minutes} ${period}`
+}
+
+export function Settings({ 
+  timeRules, 
+  categories, 
+  timeSlots,
+  onUpdateTimeRules,
+  onCreateTimeSlot,
+  onUpdateTimeSlot,
+  onDeleteTimeSlot,
+  loading 
+}: SettingsProps) {
   const [localTimeRules, setLocalTimeRules] = useState<TimeRules>(timeRules)
   const [saving, setSaving] = useState(false)
+  const [showTimeSlotDialog, setShowTimeSlotDialog] = useState(false)
+  const [editingTimeSlot, setEditingTimeSlot] = useState<TimeSlot | null>(null)
+  const [formSubmitting, setFormSubmitting] = useState(false)
+  const [deletingTimeSlot, setDeletingTimeSlot] = useState<string | null>(null)
+  const [timeSlotForm, setTimeSlotForm] = useState({
+    name: "",
+    label: "",
+    icon: "",
+    startTime12: "",
+    endTime12: "",
+    isActive: true,
+    order: 0,
+  })
 
-  const handleTimeRuleChange = (timeSlot: keyof TimeRules, category: string, checked: boolean) => {
+  const timeOptions = generateTimeOptions()
+
+  // Get current time slot based on time
+  const getCurrentTimeSlot = () => {
+    const now = new Date()
+    const currentTime = now.getHours() * 60 + now.getMinutes()
+    
+    return timeSlots.find(slot => {
+      if (!slot.isActive) return false
+      
+      const [startHour, startMin] = slot.startTime.split(':').map(Number)
+      const [endHour, endMin] = slot.endTime.split(':').map(Number)
+      const startMinutes = startHour * 60 + startMin
+      let endMinutes = endHour * 60 + endMin
+      
+      // Handle overnight slots (like night slot)
+      if (endMinutes <= startMinutes) {
+        endMinutes += 24 * 60
+        return currentTime >= startMinutes || currentTime <= (endMinutes - 24 * 60)
+      }
+      
+      return currentTime >= startMinutes && currentTime <= endMinutes
+    })
+  }
+
+  // Get available categories for current time
+  const getAvailableCategories = () => {
+    const currentSlot = getCurrentTimeSlot()
+    if (!currentSlot) return []
+    
+    const allowedCategoryIds = localTimeRules[currentSlot.id] || []
+    return categories.filter(cat => 
+      cat.isActive && allowedCategoryIds.includes(cat.id)
+    )
+  }
+
+  const handleTimeRuleChange = (timeSlotId: string, categoryId: string, checked: boolean) => {
     const newRules = { ...localTimeRules }
+    if (!newRules[timeSlotId]) {
+      newRules[timeSlotId] = []
+    }
+    
     if (checked) {
-      newRules[timeSlot] = [...newRules[timeSlot], category]
+      newRules[timeSlotId] = [...newRules[timeSlotId], categoryId]
     } else {
-      newRules[timeSlot] = newRules[timeSlot].filter((cat) => cat !== category)
+      newRules[timeSlotId] = newRules[timeSlotId].filter((id) => id !== categoryId)
     }
     setLocalTimeRules(newRules)
   }
@@ -41,6 +164,96 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
     }
   }
 
+  const handleTemplateSelect = (template: typeof TIME_SLOT_TEMPLATES[0]) => {
+    setTimeSlotForm({
+      ...timeSlotForm,
+      name: template.value,
+      label: template.label,
+      icon: template.icon,
+      startTime12: convertTo12Hour(template.defaultStart),
+      endTime12: convertTo12Hour(template.defaultEnd),
+    })
+  }
+
+  const handleTimeSlotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!timeSlotForm.startTime12 || !timeSlotForm.endTime12) {
+      alert("Please select both start and end times")
+      return
+    }
+
+    setFormSubmitting(true)
+    try {
+      const startTime24 = convertTo24Hour(timeSlotForm.startTime12)
+      const endTime24 = convertTo24Hour(timeSlotForm.endTime12)
+
+      const timeSlotData = {
+        name: timeSlotForm.name,
+        label: timeSlotForm.label,
+        icon: timeSlotForm.icon || "⏰",
+        startTime: startTime24,
+        endTime: endTime24,
+        isActive: timeSlotForm.isActive,
+        order: timeSlotForm.order,
+      }
+
+      if (editingTimeSlot) {
+        await onUpdateTimeSlot(editingTimeSlot.id, timeSlotData)
+      } else {
+        await onCreateTimeSlot(timeSlotData)
+      }
+      resetTimeSlotForm()
+      setShowTimeSlotDialog(false)
+    } catch (error) {
+      console.error("Error saving time slot:", error)
+    } finally {
+      setFormSubmitting(false)
+    }
+  }
+
+  const resetTimeSlotForm = () => {
+    setTimeSlotForm({
+      name: "",
+      label: "",
+      icon: "",
+      startTime12: "",
+      endTime12: "",
+      isActive: true,
+      order: timeSlots.length,
+    })
+    setEditingTimeSlot(null)
+  }
+
+  const handleEditTimeSlot = (timeSlot: TimeSlot) => {
+    setTimeSlotForm({
+      name: timeSlot.name,
+      label: timeSlot.label,
+      icon: timeSlot.icon,
+      startTime12: convertTo12Hour(timeSlot.startTime),
+      endTime12: convertTo12Hour(timeSlot.endTime),
+      isActive: timeSlot.isActive,
+      order: timeSlot.order,
+    })
+    setEditingTimeSlot(timeSlot)
+    setShowTimeSlotDialog(true)
+  }
+
+  const handleDeleteTimeSlot = async (timeSlotId: string) => {
+    if (!confirm("Are you sure you want to delete this time slot? This action cannot be undone.")) {
+      return
+    }
+
+    setDeletingTimeSlot(timeSlotId)
+    try {
+      await onDeleteTimeSlot(timeSlotId)
+    } catch (error) {
+      console.error("Error deleting time slot:", error)
+    } finally {
+      setDeletingTimeSlot(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6 space-y-6">
@@ -48,32 +261,23 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
           <div className="h-8 bg-muted rounded w-48"></div>
           <div className="h-4 bg-muted rounded w-64"></div>
         </div>
-
         <div className="h-12 bg-muted rounded"></div>
-
         <Card>
           <CardHeader>
             <div className="h-6 bg-muted rounded w-48"></div>
-            <div className="h-4 bg-muted rounded w-96"></div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="space-y-3">
-                  <div className="h-6 bg-muted rounded w-32"></div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <div key={i} className="h-6 bg-muted rounded"></div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           </CardContent>
         </Card>
       </div>
     )
   }
+
+  const currentSlot = getCurrentTimeSlot()
+  const availableCategories = getAvailableCategories()
 
   return (
     <div className="p-6 space-y-6">
@@ -83,11 +287,10 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
       </div>
 
       <Tabs defaultValue="time-rules" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="time-rules">Time Rules</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="time-slots">Time Slots</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
         </TabsList>
 
         <TabsContent value="time-rules" className="space-y-6">
@@ -95,33 +298,44 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Timer className="w-5 h-5" />
-                Time-Based Ordering Rules
+                Time-Based Category Rules
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Configure which product categories are available during specific time slots
+                Configure which categories are available during specific time slots
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {TIME_SLOTS.map((slot) => (
-                <div key={slot.value} className="space-y-3">
+              {timeSlots
+                .filter(slot => slot.isActive)
+                .sort((a, b) => a.order - b.order)
+                .map((slot) => (
+                <div key={slot.id} className="space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{slot.icon}</span>
-                    <h3 className="font-semibold text-foreground">{slot.label}</h3>
+                    <div>
+                      <h3 className="font-semibold text-foreground">{slot.label}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {convertTo12Hour(slot.startTime)} - {convertTo12Hour(slot.endTime)}
+                      </p>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {DEFAULT_CATEGORIES.map((category) => (
-                      <div key={category} className="flex items-center space-x-2">
+                    {categories
+                      .filter(cat => cat.isActive)
+                      .map((category) => (
+                      <div key={category.id} className="flex items-center space-x-2">
                         <input
                           type="checkbox"
-                          id={`${slot.value}-${category}`}
-                          checked={localTimeRules[slot.value as keyof TimeRules]?.includes(category)}
+                          id={`${slot.id}-${category.id}`}
+                          checked={localTimeRules[slot.id]?.includes(category.id) || false}
                           onChange={(e) =>
-                            handleTimeRuleChange(slot.value as keyof TimeRules, category, e.target.checked)
+                            handleTimeRuleChange(slot.id, category.id, e.target.checked)
                           }
                           className="rounded"
+                          disabled={saving}
                         />
-                        <Label htmlFor={`${slot.value}-${category}`} className="text-sm">
-                          {category}
+                        <Label htmlFor={`${slot.id}-${category.id}`} className="text-sm">
+                          {category.name}
                         </Label>
                       </div>
                     ))}
@@ -130,45 +344,237 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
               ))}
               <div className="pt-4 border-t border-border">
                 <Button onClick={handleSaveTimeRules} disabled={saving} className="gap-2">
-                  <CheckCircle className="w-4 h-4" />
-                  {saving ? "Saving..." : "Save Time Rules"}
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Save Time Rules
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="notifications">
+        <TabsContent value="time-slots" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5" />
-                Notification Settings
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5" />
+                    Time Slots Management
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Create and manage time slots for category availability
+                  </p>
+                </div>
+                <Dialog open={showTimeSlotDialog} onOpenChange={setShowTimeSlotDialog}>
+                  <DialogTrigger asChild>
+                    <Button onClick={resetTimeSlotForm} className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      Add Time Slot
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {editingTimeSlot ? "Edit Time Slot" : "Create New Time Slot"}
+                      </DialogTitle>
+                      <DialogDescription>
+                        Configure the time slot details and availability window
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleTimeSlotSubmit} className="space-y-4">
+                      {!editingTimeSlot && (
+                        <div className="space-y-2">
+                          <Label>Quick Templates</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {TIME_SLOT_TEMPLATES.map((template) => (
+                              <Button
+                                key={template.value}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleTemplateSelect(template)}
+                                className="justify-start gap-2"
+                                disabled={formSubmitting}
+                              >
+                                <span>{template.icon}</span>
+                                {template.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Name *</Label>
+                        <Input
+                          id="name"
+                          value={timeSlotForm.name}
+                          onChange={(e) => setTimeSlotForm({...timeSlotForm, name: e.target.value})}
+                          placeholder="e.g., morning"
+                          required
+                          disabled={formSubmitting}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="label">Display Label *</Label>
+                        <Input
+                          id="label"
+                          value={timeSlotForm.label}
+                          onChange={(e) => setTimeSlotForm({...timeSlotForm, label: e.target.value})}
+                          placeholder="e.g., Morning"
+                          required
+                          disabled={formSubmitting}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="icon">Icon (Optional)</Label>
+                        <Input
+                          id="icon"
+                          value={timeSlotForm.icon}
+                          onChange={(e) => setTimeSlotForm({...timeSlotForm, icon: e.target.value})}
+                          placeholder="🌅 (emoji or leave empty for default)"
+                          disabled={formSubmitting}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="startTime">Start Time *</Label>
+                          <Select
+                            value={timeSlotForm.startTime12}
+                            onValueChange={(value) => setTimeSlotForm({...timeSlotForm, startTime12: value})}
+                            required
+                            disabled={formSubmitting}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select start time" />
+                            </SelectTrigger>
+                            <SelectContent className="h-48">
+                              {timeOptions.map((time) => (
+                                <SelectItem key={time} value={time}>
+                                  {time}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="endTime">End Time *</Label>
+                          <Select
+                            value={timeSlotForm.endTime12}
+                            onValueChange={(value) => setTimeSlotForm({...timeSlotForm, endTime12: value})}
+                            required
+                            disabled={formSubmitting}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select end time" />
+                            </SelectTrigger>
+                            <SelectContent className="h-48">
+                              {timeOptions.map((time) => (
+                                <SelectItem key={time} value={time}>
+                                  {time}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="isActive"
+                          checked={timeSlotForm.isActive}
+                          onCheckedChange={(checked) => setTimeSlotForm({...timeSlotForm, isActive: checked})}
+                          disabled={formSubmitting}
+                        />
+                        <Label htmlFor="isActive">Active</Label>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setShowTimeSlotDialog(false)}
+                          disabled={formSubmitting}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={formSubmitting}>
+                          {formSubmitting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              {editingTimeSlot ? "Updating..." : "Creating..."}
+                            </>
+                          ) : (
+                            editingTimeSlot ? "Update Time Slot" : "Create Time Slot"
+                          )}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">New Order Alerts</p>
-                    <p className="text-sm text-muted-foreground">Get notified when new orders are placed</p>
+                {timeSlots
+                  .sort((a, b) => a.order - b.order)
+                  .map((slot) => (
+                  <div key={slot.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{slot.icon}</span>
+                      <div>
+                        <h3 className="font-semibold">{slot.label}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {convertTo12Hour(slot.startTime)} - {convertTo12Hour(slot.endTime)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={slot.isActive ? "default" : "secondary"}>
+                        {slot.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditTimeSlot(slot)}
+                        disabled={formSubmitting || deletingTimeSlot === slot.id}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteTimeSlot(slot.id)}
+                        disabled={formSubmitting || deletingTimeSlot === slot.id}
+                      >
+                        {deletingTimeSlot === slot.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Low Stock Alerts</p>
-                    <p className="text-sm text-muted-foreground">Alert when product stock is running low</p>
+                ))}
+                {timeSlots.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No time slots created yet</p>
+                    <p className="text-sm">Add your first time slot to get started</p>
                   </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Daily Reports</p>
-                    <p className="text-sm text-muted-foreground">Receive daily business reports via email</p>
-                  </div>
-                  <Switch />
-                </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -196,7 +602,6 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
                     Connect
                   </Button>
                 </div>
-
                 <div className="p-4 border border-border rounded-lg">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold">SMS Service</h3>
@@ -207,45 +612,6 @@ export function Settings({ timeRules, onUpdateTimeRules, loading }: SettingsProp
                     Connect
                   </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="security">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5" />
-                Security Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Two-Factor Authentication</p>
-                  <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
-                </div>
-                <Button variant="outline" size="sm">
-                  Enable
-                </Button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Session Timeout</p>
-                  <p className="text-sm text-muted-foreground">Automatically log out after inactivity</p>
-                </div>
-                <Select defaultValue="30">
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 min</SelectItem>
-                    <SelectItem value="30">30 min</SelectItem>
-                    <SelectItem value="60">1 hour</SelectItem>
-                    <SelectItem value="120">2 hours</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </CardContent>
           </Card>

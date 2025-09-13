@@ -1,21 +1,37 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Activity, RefreshCw, Award, Target, CheckCircle } from "lucide-react"
+import { Activity, RefreshCw, Award, Target, CheckCircle, Loader2 } from "lucide-react"
 import { DashboardMetricsGrid } from "./dashboard-metrics"
 import { SalesChart } from "./sales-chart"
 import { RecentOrders } from "./recent-orders"
 import type { DashboardMetrics, Order, User } from "@/types"
 
+interface AdditionalMetrics {
+  topCategory: string
+  avgOrderValue: number
+  completionRate: number
+}
+
 interface DashboardProps {
   metrics: DashboardMetrics
+  additionalMetrics: AdditionalMetrics
   orders: Order[]
   currentUser: User
   loading?: boolean
   onViewChange: (view: string) => void
+  onRefresh: () => Promise<void>
 }
 
-export function Dashboard({ metrics, orders, currentUser, loading, onViewChange }: DashboardProps) {
+export function Dashboard({ 
+  metrics, 
+  additionalMetrics, 
+  orders, 
+  currentUser, 
+  loading, 
+  onViewChange,
+  onRefresh 
+}: DashboardProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -39,8 +55,18 @@ export function Dashboard({ metrics, orders, currentUser, loading, onViewChange 
               <Activity className="w-3 h-3 mr-1" />
               System Online
             </Badge>
-            <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-              <RefreshCw className="w-4 h-4" />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2 bg-transparent"
+              onClick={onRefresh}
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
               Refresh
             </Button>
           </div>
@@ -53,20 +79,22 @@ export function Dashboard({ metrics, orders, currentUser, loading, onViewChange 
       {/* Charts and Real-time Data */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sales Overview */}
-        <SalesChart loading={loading} />
+        <SalesChart loading={loading} orders={orders}/>
 
         {/* Recent Orders */}
         <RecentOrders orders={orders} loading={loading} onViewAll={() => onViewChange("orders")} />
       </div>
 
-      {/* Quick Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Quick Stats Cards - Now Dynamic */}
+      {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Top Category</p>
-                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">Vegetables</p>
+                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                  {additionalMetrics.topCategory}
+                </p>
                 <p className="text-sm text-blue-600 dark:text-blue-400">Most popular</p>
               </div>
               <Award className="w-12 h-12 text-blue-500" />
@@ -80,7 +108,7 @@ export function Dashboard({ metrics, orders, currentUser, loading, onViewChange 
               <div>
                 <p className="text-sm font-medium text-green-700 dark:text-green-300">Avg Order Value</p>
                 <p className="text-2xl font-bold text-green-900 dark:text-green-100">
-                  {formatCurrency(metrics.dailyRevenue / Math.max(metrics.totalOrders, 1))}
+                  {formatCurrency(additionalMetrics.avgOrderValue)}
                 </p>
                 <p className="text-sm text-green-600 dark:text-green-400">Per transaction</p>
               </div>
@@ -95,10 +123,7 @@ export function Dashboard({ metrics, orders, currentUser, loading, onViewChange 
               <div>
                 <p className="text-sm font-medium text-purple-700 dark:text-purple-300">Completion Rate</p>
                 <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                  {orders.length > 0
-                    ? Math.round((orders.filter((o) => o.status === "delivered").length / orders.length) * 100)
-                    : 0}
-                  %
+                  {additionalMetrics.completionRate}%
                 </p>
                 <p className="text-sm text-purple-600 dark:text-purple-400">Orders delivered</p>
               </div>
@@ -106,7 +131,7 @@ export function Dashboard({ metrics, orders, currentUser, loading, onViewChange 
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div> */}
     </div>
   )
 }

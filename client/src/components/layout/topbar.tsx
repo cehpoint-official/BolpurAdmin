@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Menu, Search, Bell, Moon, Sun, Download, RefreshCw } from "lucide-react"
+import { Search, Bell, Moon, Sun} from "lucide-react"
 
 interface TopBarProps {
   activeView: string
@@ -68,7 +67,7 @@ export function TopBar({
           {/* Quick Actions */}
           <div className="flex items-center space-x-2">
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon" className="relative border">
               <Bell className="w-5 h-5" />
               {pendingNotifications > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
@@ -78,24 +77,10 @@ export function TopBar({
             </Button>
 
             {/* Theme Toggle */}
-            <Button variant="ghost" size="icon" onClick={onToggleDarkMode} className="hover:bg-muted">
+            <Button variant="ghost" size="icon" onClick={onToggleDarkMode} className="hover:bg-muted border">
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </Button>
 
-            <Separator orientation="vertical" className="h-6" />
-
-            {/* Action Buttons - Hidden on small screens */}
-            <div className="hidden sm:flex items-center gap-2">
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-                <RefreshCw className="w-4 h-4" />
-                <span className="hidden md:inline">Refresh</span>
-              </Button>
-
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-                <Download className="w-4 h-4" />
-                <span className="hidden md:inline">Export</span>
-              </Button>
-            </div>
           </div>
         </div>
       </div>
