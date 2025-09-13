@@ -103,12 +103,12 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
   if (loading) {
     return (
       <Card className="lg:col-span-2">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 pb-6">
           <div className="space-y-2">
             <div className="h-6 bg-muted rounded w-32"></div>
             <div className="h-4 bg-muted rounded w-48"></div>
           </div>
-          <div className="h-10 bg-muted rounded w-48"></div>
+          <div className="h-10 bg-muted rounded w-full sm:w-48"></div>
         </CardHeader>
         <CardContent>
           <div className="h-80 bg-muted rounded animate-pulse"></div>
@@ -119,7 +119,7 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
 
   return (
     <Card className="lg:col-span-2">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 pb-6">
         <div>
           <CardTitle className="text-lg font-semibold">Sales Overview</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
@@ -127,7 +127,7 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
           </p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full sm:w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -137,9 +137,9 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
           </SelectContent>
         </Select>
       </CardHeader>
-      <CardContent>
-        <div className="w-full h-full p-4">
-          <div className="flex justify-between items-center mb-4">
+      <CardContent className="overflow-hidden">
+        <div className="w-full h-full p-2 sm:p-4">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
             <div className="flex gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-primary rounded-full"></div>
@@ -155,17 +155,17 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
             )}
           </div>
 
-          <div className="relative h-60 flex items-end justify-around gap-2 px-4">
+          <div className="relative h-48 sm:h-60 flex items-end justify-around gap-1 sm:gap-2 px-1 sm:px-4 overflow-x-auto min-w-0">
             {chartData.length > 0 ? (
               chartData.map((data, index) => (
-                <div key={`${data.day}-${index}`} className="flex flex-col items-center gap-2 flex-1">
-                  <div className="flex items-end gap-1 h-48">
+                <div key={`${data.day}-${index}`} className="flex flex-col items-center gap-1 sm:gap-2 flex-shrink-0" style={{ minWidth: timeRange === "30days" ? "20px" : "32px" }}>
+                  <div className="flex items-end gap-1 h-36 sm:h-48">
                     {/* Revenue Bar */}
                     <div
                       className="bg-primary rounded-t-lg transition-all duration-500 hover:opacity-80 cursor-pointer relative group"
                       style={{ 
-                        height: `${Math.max((data.revenue / maxRevenue) * 180, 2)}px`,
-                        width: timeRange === "30days" ? "8px" : "24px"
+                        height: `${Math.max((data.revenue / maxRevenue) * (window.innerWidth < 640 ? 140 : 180), 2)}px`,
+                        width: timeRange === "30days" ? (window.innerWidth < 640 ? "6px" : "8px") : (window.innerWidth < 640 ? "16px" : "24px")
                       }}
                       title={`Revenue: ₹${data.revenue.toLocaleString()} on ${data.date}`}
                     >
@@ -178,8 +178,8 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
                     <div
                       className="bg-accent rounded-t-lg transition-all duration-500 hover:opacity-80 cursor-pointer relative group"
                       style={{ 
-                        height: `${Math.max((data.orders / maxOrders) * 180, 2)}px`,
-                        width: timeRange === "30days" ? "8px" : "24px"
+                        height: `${Math.max((data.orders / maxOrders) * (window.innerWidth < 640 ? 140 : 180), 2)}px`,
+                        width: timeRange === "30days" ? (window.innerWidth < 640 ? "6px" : "8px") : (window.innerWidth < 640 ? "16px" : "24px")
                       }}
                       title={`Orders: ${data.orders} on ${data.date}`}
                     >
@@ -189,38 +189,40 @@ export function SalesChart({ orders = [], loading }: SalesChartProps) {
                     </div>
                   </div>
 
-                  <span className="text-xs font-medium text-muted-foreground truncate">
+                  <span className={`text-xs font-medium text-muted-foreground truncate ${
+                    timeRange === "30days" ? "max-w-4" : "max-w-8"
+                  }`}>
                     {data.day}
                   </span>
                 </div>
               ))
             ) : (
-              <div className="flex items-center justify-center h-48 w-full">
+              <div className="flex items-center justify-center h-36 sm:h-48 w-full">
                 <div className="text-center">
-                  <div className="text-4xl mb-2">📊</div>
-                  <p className="text-muted-foreground">No sales data available</p>
-                  <p className="text-sm text-muted-foreground">Orders will appear here once placed</p>
+                  <div className="text-2xl sm:text-4xl mb-2">📊</div>
+                  <p className="text-muted-foreground text-sm">No sales data available</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Orders will appear here once placed</p>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4 text-center">
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <p className="text-lg font-bold text-primary">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-center">
+            <div className="p-2 sm:p-3 bg-primary/10 rounded-lg">
+              <p className="text-base sm:text-lg font-bold text-primary">
                 ₹{totalRevenue.toLocaleString()}
               </p>
-              <p className="text-sm text-muted-foreground">Total Revenue</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">Total Revenue</p>
             </div>
-            <div className="p-3 bg-accent/10 rounded-lg">
-              <p className="text-lg font-bold text-accent">{totalOrders}</p>
-              <p className="text-sm text-muted-foreground">Total Orders</p>
+            <div className="p-2 sm:p-3 bg-accent/10 rounded-lg">
+              <p className="text-base sm:text-lg font-bold text-accent">{totalOrders}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">Total Orders</p>
             </div>
           </div>
 
           {/* Additional Stats */}
           {totalOrders > 0 && (
-            <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
+            <div className="mt-3 sm:mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 text-center text-xs sm:text-sm">
               <div className="p-2 bg-muted/50 rounded">
                 <p className="font-semibold">₹{Math.round(totalRevenue / totalOrders).toLocaleString()}</p>
                 <p className="text-muted-foreground">Avg Order</p>
