@@ -46,14 +46,14 @@ function AdminPanelContent() {
 
   // Loading states - Fixed initial state
   const [loading, setLoading] = useState({
-    global: true, // Set to true initially
-    products: true, // Set to true initially
-    vendors: true, // Set to true initially
-    orders: true, // Set to true initially
-    users: true, // Set to true initially
-    categories: true, // Set to true initially
-    timeSlots: true, // Set to true initially
-    timeRules: true, // Set to true initially
+    global: true,
+    products: true,
+    vendors: true,
+    orders: true,
+    users: true,
+    categories: true,
+    timeSlots: true,
+    timeRules: true,
   });
 
   const { toast } = useToast();
@@ -137,12 +137,10 @@ function AdminPanelContent() {
     );
     unsubscribers.push(unsubscribeOrders);
 
-    // Users listener
-    // Replace the users listener in AdminPanel.tsx with client-side filtering:
+    // Users listener with client-side filtering
     const unsubscribeUsers = FirebaseService.subscribeToCollection<User>(
       "users",
       (usersData) => {
-        // Filter only admin and subadmin users on the client side
         const adminUsers = usersData.filter(
           (user) => user.role === "admin" || user.role === "subadmin"
         );
@@ -182,7 +180,7 @@ function AdminPanelContent() {
   // Update global loading state when all individual loading states change
   useEffect(() => {
     const isAnyLoading = Object.entries(loading)
-      .filter(([key]) => key !== "global") // Exclude global from the check
+      .filter(([key]) => key !== "global")
       .some(([_, isLoading]) => isLoading);
 
     setLoading((prev) => ({ ...prev, global: isAnyLoading }));
@@ -195,6 +193,22 @@ function AdminPanelContent() {
     loading.timeSlots,
     loading.timeRules,
   ]);
+
+  // Helper function to safely get Date from createdAt
+  const getDateFromTimestamp = (timestamp: any): Date => {
+    if (!timestamp) return new Date(0);
+    
+    // If it's already a Date object
+    if (timestamp instanceof Date) return timestamp;
+    
+    // If it's a Firestore Timestamp with toDate method
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      return timestamp.toDate();
+    }
+    
+    // If it's a string or number, try to create Date
+    return new Date(timestamp);
+  };
 
   // Dashboard metrics calculation
   const dashboardMetrics = useMemo((): DashboardMetrics => {
@@ -209,20 +223,17 @@ function AdminPanelContent() {
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
     const todayOrders = orders.filter((order) => {
-      const orderDate =
-        order.createdAt?.toDate?.() || new Date(order.createdAt);
+      const orderDate = getDateFromTimestamp(order.createdAt);
       return orderDate >= todayStart;
     });
 
     const thisMonthOrders = orders.filter((order) => {
-      const orderDate =
-        order.createdAt?.toDate?.() || new Date(order.createdAt);
+      const orderDate = getDateFromTimestamp(order.createdAt);
       return orderDate >= monthStart;
     });
 
     const lastMonthOrders = orders.filter((order) => {
-      const orderDate =
-        order.createdAt?.toDate?.() || new Date(order.createdAt);
+      const orderDate = getDateFromTimestamp(order.createdAt);
       return orderDate >= lastMonthStart && orderDate <= lastMonthEnd;
     });
 
@@ -258,25 +269,28 @@ function AdminPanelContent() {
     };
   }, [orders, products]);
 
-  // Calculate additional dashboard metrics
+  // Calculate additional dashboard metrics - Fixed category index issue
   const additionalMetrics = useMemo(() => {
     // Get top category by order count
-    const categoryOrderCount: { [key: string]: number } = {};
+    const categoryOrderCount: { [categoryName: string]: number } = {};
+    
     orders.forEach((order) => {
       order.items.forEach((item) => {
         const product = products.find((p) => p.id === item.productId);
         if (product && Array.isArray(product.categories)) {
           product.categories.forEach((category) => {
-            categoryOrderCount[category] =
-              (categoryOrderCount[category] || 0) + item.quantity;
+            // Use category.name as string key instead of Category object
+            const categoryName = category.name;
+            categoryOrderCount[categoryName] =
+              (categoryOrderCount[categoryName] || 0) + item.quantity;
           });
         }
       });
     });
 
     const topCategory = Object.entries(categoryOrderCount).reduce(
-      (max, [category, count]) =>
-        count > max.count ? { category, count } : max,
+      (max, [categoryName, count]) =>
+        count > max.count ? { category: categoryName, count } : max,
       { category: "N/A", count: 0 }
     );
 
@@ -415,16 +429,22 @@ function AdminPanelContent() {
   ) => {
     try {
       await FirebaseService.update("vendors", id, vendorData);
-      toast({
-        title: "Success",
-        description: "Vendor updated successfully",
-      });
+      // Don't show toast for background product count updates
+      if (!vendorData.totalProducts) {
+        toast({
+          title: "Success",
+          description: "Vendor updated successfully",
+        });
+      }
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update vendor",
-        variant: "destructive",
-      });
+      console.error("Error updating vendor:", error);
+      if (!vendorData.totalProducts) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to update vendor",
+          variant: "destructive",
+        });
+      }
       throw error;
     }
   };
