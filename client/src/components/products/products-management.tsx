@@ -4,35 +4,35 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ProductForm } from "./product-form";
 import { Plus, Package, AlertTriangle, Trash2 } from "lucide-react";
-import type { Product, Vendor, Category, TimeSlot } from "@/types";
+import type { Product, Vendor, Category } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 interface ProductsManagementProps {
   products: Product[];
   vendors: Vendor[];
   categories: Category[];
-  timeSlots: TimeSlot[];
   loading?: boolean;
   onCreateProduct: (product: Omit<Product, "id">) => Promise<void>;
   onUpdateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+  onUpdateVendor: (id: string, vendor: Partial<Vendor>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
 }
 
-// ✅ Create extended interface for export data
 interface ProductWithExportData extends Product {
-  timeSlotName?: string;
-  availableStatus?: string;
+  categoryNames: string;
+  vendorNames: string;
+  availableStatus: string;
 }
 
 export function ProductsManagement({
   products,
   vendors,
   categories,
-  timeSlots,
   loading,
   onCreateProduct,
   onUpdateProduct,
+  onUpdateVendor,
   onDeleteProduct,
   onRefresh,
 }: ProductsManagementProps) {
@@ -43,20 +43,55 @@ export function ProductsManagement({
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<Product[]>([]);
   const { toast } = useToast();
-    const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
+  // Calculate total products for each vendor
+  const calculateVendorProductCounts = () => {
+    const vendorCounts: { [vendorId: string]: number } = {};
+    
+    products.forEach(product => {
+      product.vendors.forEach(vendor => {
+        vendorCounts[vendor.id] = (vendorCounts[vendor.id] || 0) + 1;
+      });
+    });
+    
+    return vendorCounts;
+  };
 
+  // Update vendor totalProducts count
+  const updateVendorProductCounts = async (affectedVendorIds: string[]) => {
+    try {
+      const vendorCounts = calculateVendorProductCounts();
+      
+      const updatePromises = affectedVendorIds.map(async (vendorId) => {
+        const count = vendorCounts[vendorId] || 0;
+        await onUpdateVendor(vendorId, { totalProducts: count });
+      });
+      
+      await Promise.all(updatePromises);
+    } catch (error) {
+      console.error("Error updating vendor product counts:", error);
+    }
+  };
 
   // Filter products based on search and category
   const filteredProducts = products.filter((product) => {
-    const matchesSearch = searchValue === "" || 
+    const matchesSearch =
+      searchValue === "" ||
       product.name.toLowerCase().includes(searchValue.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchValue.toLowerCase()) ||
-      product.vendorName.toLowerCase().includes(searchValue.toLowerCase()) ||
-      (product.description && product.description.toLowerCase().includes(searchValue.toLowerCase()));
+      product.categories.some((cat) =>
+        cat.name.toLowerCase().includes(searchValue.toLowerCase())
+      ) ||
+      product.vendors.some((vendor) =>
+        vendor.name.toLowerCase().includes(searchValue.toLowerCase())
+      ) ||
+      (product.description &&
+        product.description.toLowerCase().includes(searchValue.toLowerCase()));
 
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
+    const matchesCategory =
+      categoryFilter === "all" ||
+      product.categories.some(cat => cat.name === categoryFilter);
 
     return matchesSearch && matchesCategory;
   });
@@ -70,21 +105,6 @@ export function ProductsManagement({
     }).format(amount);
   };
 
-  
-  const getTimeSlotInfo = (timeSlotId: string) => {
-    if (!timeSlotId) return { icon: "⏰", label: "Not Set", name: "Not Set" };
-    
-    const slot = timeSlots.find(s => s.id === timeSlotId);
-    if (!slot) return { icon: "⏰", label: "Unknown", name: "Unknown" };
-    
-    return { 
-      icon: slot.icon || "⏰", 
-      label: slot.label || slot.name, 
-      name: slot.name 
-    };
-  };
-
-  // ✅ Updated columns with proper data handling
   const columns: Column<ProductWithExportData>[] = [
     {
       key: "name",
@@ -117,10 +137,18 @@ export function ProductsManagement({
       ),
     },
     {
-      key: "category",
-      title: "Category",
+      key: "categoryNames",
+      title: "Categories",
       exportable: true,
-      render: (value) => <Badge variant="outline">{value}</Badge>,
+      render: (_, record) => (
+        <div className="flex flex-wrap gap-1">
+          {record.categories.map((cat) => (
+            <Badge key={cat.id} variant="outline">
+              {cat.name}
+            </Badge>
+          ))}
+        </div>
+      ),
     },
     {
       key: "price",
@@ -146,40 +174,30 @@ export function ProductsManagement({
       ),
     },
     {
-      key: "vendorName",
-      title: "Vendor",
+      key: "vendorNames",
+      title: "Vendors",
       exportable: true,
-      render: (value) => (
-        <div className="text-sm">
-          <p className="font-medium">{value}</p>
+      render: (_, record) => (
+        <div className="flex flex-wrap gap-1">
+          {record.vendors.map((vendor) => (
+            <Badge key={vendor.id} variant="outline" className="text-xs">
+              {vendor.name}
+            </Badge>
+          ))}
         </div>
       ),
     },
     {
-      key: "timeSlotId",
-      title: "Time Slot",
-      exportable: false,
-      render: (value) => {
-        const slotInfo = getTimeSlotInfo(value);
-        return (
-          <div className="flex items-center gap-1">
-            <span>{slotInfo.icon}</span>
-            <span className="text-sm capitalize">{slotInfo.label}</span>
-          </div>
-        );
-      },
-    },
-    {
-      key: "available",
+      key: "availableStatus",
       title: "Status",
-      exportable: false, 
-      render: (value) => (
+      exportable: true,
+      render: (_, record) => (
         <Badge
           className={
-            value ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+            record.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
           }
         >
-          {value ? "Available" : "Unavailable"}
+          {record.available ? "Available" : "Unavailable"}
         </Badge>
       ),
     },
@@ -197,15 +215,32 @@ export function ProductsManagement({
       )
     ) {
       try {
+        // Get affected vendor IDs before deleting
+        const affectedVendorIds = product.vendors.map(vendor => vendor.id);
+        
         await onDeleteProduct(product.id);
+        
+        // Update vendor product counts after deletion
+        await updateVendorProductCounts(affectedVendorIds);
+        
         if (selectedRowKeys.includes(product.id)) {
-          const newSelectedKeys = selectedRowKeys.filter(key => key !== product.id);
-          const newSelectedRows = selectedRows.filter(row => row.id !== product.id);
+          const newSelectedKeys = selectedRowKeys.filter((key) => key !== product.id);
+          const newSelectedRows = selectedRows.filter((row) => row.id !== product.id);
           setSelectedRowKeys(newSelectedKeys);
           setSelectedRows(newSelectedRows);
         }
+        
+        toast({
+          title: "Success",
+          description: "Product deleted and vendor counts updated",
+        });
       } catch (error) {
         console.error("Error deleting product:", error);
+        toast({
+          title: "Error",
+          description: "Failed to delete product",
+          variant: "destructive",
+        });
       }
     }
   };
@@ -214,15 +249,27 @@ export function ProductsManagement({
     if (selectedRows.length === 0) return;
 
     const confirmMessage = `Are you sure you want to delete ${selectedRows.length} selected product(s)? This action cannot be undone.`;
-    
+
     if (confirm(confirmMessage)) {
       try {
-        await Promise.all(selectedRows.map(product => onDeleteProduct(product.id)));
+        // Get all affected vendor IDs before deletion
+        const allAffectedVendorIds = new Set<string>();
+        selectedRows.forEach(product => {
+          product.vendors.forEach(vendor => {
+            allAffectedVendorIds.add(vendor.id);
+          });
+        });
+        
+        await Promise.all(selectedRows.map((product) => onDeleteProduct(product.id)));
+        
+        // Update vendor product counts after deletion
+        await updateVendorProductCounts(Array.from(allAffectedVendorIds));
+        
         setSelectedRowKeys([]);
         setSelectedRows([]);
         toast({
           title: "Success",
-          description: `${selectedRows.length} product(s) deleted successfully`,
+          description: `${selectedRows.length} product(s) deleted and vendor counts updated`,
         });
       } catch (error) {
         console.error("Error deleting products:", error);
@@ -236,13 +283,48 @@ export function ProductsManagement({
   };
 
   const handleFormSubmit = async (productData: Omit<Product, "id">) => {
-    if (editingProduct) {
-      await onUpdateProduct(editingProduct.id, productData);
-    } else {
-      await onCreateProduct(productData);
+    try {
+      let allAffectedVendorIds = new Set<string>();
+      
+      // Add new vendor IDs
+      productData.vendors.forEach(vendor => {
+        allAffectedVendorIds.add(vendor.id);
+      });
+      
+      if (editingProduct) {
+        // Add old vendor IDs for update case
+        editingProduct.vendors.forEach(vendor => {
+          allAffectedVendorIds.add(vendor.id);
+        });
+        
+        await onUpdateProduct(editingProduct.id, productData);
+        
+        toast({
+          title: "Success",
+          description: "Product updated successfully",
+        });
+      } else {
+        await onCreateProduct(productData);
+        
+        toast({
+          title: "Success",
+          description: "Product created successfully",
+        });
+      }
+      
+      // Update vendor product counts
+      await updateVendorProductCounts(Array.from(allAffectedVendorIds));
+      
+      setShowAddForm(false);
+      setEditingProduct(null);
+    } catch (error) {
+      console.error("Error saving product:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save product",
+        variant: "destructive",
+      });
     }
-    setShowAddForm(false);
-    setEditingProduct(null);
   };
 
   const handleFormCancel = () => {
@@ -277,21 +359,24 @@ export function ProductsManagement({
     }
   };
 
-  //  Prepare data for export with additional fields
-  const exportData: ProductWithExportData[] = filteredProducts.map(product => ({
+  // Prepare data for export with additional fields
+  const exportData: ProductWithExportData[] = filteredProducts.map((product) => ({
     ...product,
-    timeSlotName: getTimeSlotInfo(product.timeSlotId).name,
+    categoryNames: product.categories.map(cat => cat.name).join(", "),
+    vendorNames: product.vendors.map(vendor => vendor.name).join(", "),
     availableStatus: product.available ? "Available" : "Unavailable",
   }));
-  const totalItems = filteredProducts.length
-  const startIndex = (currentPage - 1) * pageSize
-  const endIndex = startIndex + pageSize
-  const paginatedData = exportData.slice(startIndex, endIndex)
+
+  const totalItems = filteredProducts.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedData = exportData.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number, size: number) => {
-    setCurrentPage(page)
-    setPageSize(size)
-  }
+    setCurrentPage(page);
+    setPageSize(size);
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -314,8 +399,8 @@ export function ProductsManagement({
       </div>
 
       {/* Data Table */}
-       <DataTable
-        data={paginatedData} 
+      <DataTable
+        data={paginatedData}
         columns={columns}
         loading={loading}
         pagination={{
@@ -355,7 +440,7 @@ export function ProductsManagement({
               ],
               onFilter: (value) => {
                 setCategoryFilter(value);
-                setCurrentPage(1); 
+                setCurrentPage(1);
               },
             },
           ],
@@ -374,9 +459,9 @@ export function ProductsManagement({
           ) : undefined,
         }}
         exportConfig={{
-          filename: `products-${new Date().toISOString().split('T')[0]}`,
+          filename: `products-${new Date().toISOString().split("T")[0]}`,
           sheetName: "Products",
-          excludeColumns: ["timeSlotId", "available"],
+          excludeColumns: ["categories", "vendors", "available"],
         }}
         onRefresh={handleRefresh}
         originalDataLength={products.length}
@@ -399,7 +484,6 @@ export function ProductsManagement({
           product={editingProduct}
           vendors={vendors}
           categories={categories}
-          timeSlots={timeSlots}
           onSubmit={handleFormSubmit}
           onCancel={handleFormCancel}
         />

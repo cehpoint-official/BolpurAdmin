@@ -20,7 +20,7 @@ export interface Category {
   updatedAt?: Date
 }
 
-// ✅ Updated TimeSlot interface
+
 export interface TimeSlot {
   id: string
   name: string
@@ -37,12 +37,10 @@ export interface TimeSlot {
 export interface Product {
   id: string
   name: string
-  category: string
+  categories: Category[]
   price: number
   stock: number
-  vendorId: string
-  vendorName: string
-  timeSlotId: string 
+  vendors: Vendor[]
   description: string
   tags: string[]
   available: boolean
@@ -93,8 +91,19 @@ export interface Order {
   notes?: string
 }
 
-export interface TimeRules {
-  [timeSlotId: string]: string[] // timeSlotId -> category IDs
+export interface CategoryReference {
+  id: string
+  name: string
+}
+
+export interface TimeRulesConfig {
+  [timeSlotId: string]: {
+    timeSlotName: string
+    startTime: string
+    endTime: string
+    allowedCategories: CategoryReference[]
+    isActive: boolean
+  }
 }
 
 export interface DashboardMetrics {

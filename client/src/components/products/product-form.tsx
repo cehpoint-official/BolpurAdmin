@@ -5,30 +5,123 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Package2, Upload, X, Loader2, Image as ImageIcon } from "lucide-react"
-import type { Product, Vendor, Category, TimeSlot } from "@/types"
+import { Package2, Upload, X, Loader2, Image as ImageIcon, Check } from "lucide-react"
+import type { Product, Vendor, Category } from "@/types"
+import { Command, CommandGroup, CommandItem } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Badge } from "@/components/ui/badge"
 
 interface ProductFormProps {
   product?: Product | null
   vendors: Vendor[]
-  timeSlots: TimeSlot[]
   categories: Category[]
   onSubmit: (product: Omit<Product, "id">) => Promise<void>
   onCancel: () => void
 }
 
-export function ProductForm({ product, vendors, timeSlots, categories, onSubmit, onCancel }: ProductFormProps) {
+interface MultiSelectProps {
+  options: { value: string; label: string; data?: any }[]
+  selected: any[]
+  onChange: (selected: any[]) => void
+  placeholder: string
+  disabled?: boolean
+  displayField: string
+  valueField: string
+}
+
+function MultiSelect({ 
+  options, 
+  selected, 
+  onChange, 
+  placeholder, 
+  disabled, 
+  displayField, 
+  valueField 
+}: MultiSelectProps) {
+  const [open, setOpen] = useState(false)
+
+  const handleSelect = (option: any) => {
+    const isSelected = selected.some(item => item[valueField] === option.data[valueField])
+    
+    if (isSelected) {
+      onChange(selected.filter((item) => item[valueField] !== option.data[valueField]))
+    } else {
+      onChange([...selected, option.data])
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          disabled={disabled}
+        >
+          {selected.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {selected.map((item) => (
+                <Badge key={item[valueField]} variant="secondary" className="mr-1">
+                  {item[displayField]}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-1 h-4 w-4 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onChange(selected.filter(i => i[valueField] !== item[valueField]))
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            placeholder
+          )}
+          <Package2 className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0">
+        <Command>
+          <CommandGroup>
+            {options.map((option) => {
+              const isSelected = selected.some(item => item[valueField] === option.data[valueField])
+              return (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={() => handleSelect(option)}
+                >
+                  <Check
+                    className={`mr-2 h-4 w-4 ${
+                      isSelected ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                  {option.label}
+                </CommandItem>
+              )
+            })}
+          </CommandGroup>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+export function ProductForm({ product, vendors, categories, onSubmit, onCancel }: ProductFormProps) {
   const [loading, setLoading] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
-    category: "",
+    categories: [] as Category[],
     price: "",
     stock: "",
-    vendorId: "",
-    timeSlotId: "",
+    vendors: [] as Vendor[],
     description: "",
     tags: "",
     available: true,
@@ -40,11 +133,10 @@ export function ProductForm({ product, vendors, timeSlots, categories, onSubmit,
     if (product) {
       setFormData({
         name: product.name,
-        category: product.category,
+        categories: product.categories || [],
         price: product.price.toString(),
         stock: product.stock.toString(),
-        vendorId: product.vendorId,
-        timeSlotId: product.timeSlotId,
+        vendors: product.vendors || [],
         description: product.description || "",
         tags: product.tags?.join(", ") || "",
         available: product.available,
@@ -125,24 +217,20 @@ export function ProductForm({ product, vendors, timeSlots, categories, onSubmit,
     setLoading(true)
 
     try {
-      const vendor = vendors.find((v) => v.id === formData.vendorId)
-      if (!vendor) {
-        throw new Error("Please select a valid vendor")
+      if (formData.vendors.length === 0) {
+        throw new Error("Please select at least one vendor")
       }
 
-      const selectedTimeSlot = timeSlots.find((slot) => slot.id === formData.timeSlotId)
-      if (!selectedTimeSlot) {
-        throw new Error("Please select a valid time slot")
+      if (formData.categories.length === 0) {
+        throw new Error("Please select at least one category")
       }
 
       const productData = {
         name: formData.name,
-        category: formData.category,
+        categories: formData.categories,
         price: Number.parseFloat(formData.price),
         stock: Number.parseInt(formData.stock),
-        vendorId: formData.vendorId,
-        vendorName: vendor.name,
-        timeSlotId: formData.timeSlotId,
+        vendors: formData.vendors,
         description: formData.description,
         tags: formData.tags ? formData.tags.split(",").map((tag) => tag.trim()) : [],
         available: formData.available,
@@ -263,21 +351,22 @@ export function ProductForm({ product, vendors, timeSlots, categories, onSubmit,
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <Select value={formData.category} onValueChange={(value) => updateFormData("category", value)} required disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories
-                    .filter((cat) => cat.isActive)
-                    .map((cat) => (
-                      <SelectItem key={cat.id} value={cat.name}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="categories">Categories *</Label>
+              <MultiSelect
+                options={categories
+                  .filter((cat) => cat.isActive)
+                  .map((cat) => ({
+                    value: cat.id,
+                    label: cat.name,
+                    data: cat
+                  }))}
+                selected={formData.categories}
+                onChange={(value) => updateFormData("categories", value)}
+                placeholder="Select categories"
+                disabled={loading}
+                displayField="name"
+                valueField="id"
+              />
             </div>
 
             <div className="space-y-2">
@@ -309,39 +398,23 @@ export function ProductForm({ product, vendors, timeSlots, categories, onSubmit,
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="vendor">Vendor *</Label>
-              <Select value={formData.vendorId} onValueChange={(value) => updateFormData("vendorId", value)} required disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select vendor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendors.filter(vendor => vendor.isActive).map((vendor) => (
-                    <SelectItem key={vendor.id} value={vendor.id}>
-                      {vendor.name} - {vendor.location}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="timeSlot">Time Slot *</Label>
-              <Select value={formData.timeSlotId} onValueChange={(value) => updateFormData("timeSlotId", value)} required disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select time slot" />
-                </SelectTrigger>
-                <SelectContent>
-                  {timeSlots
-                    .filter(slot => slot.isActive)
-                    .sort((a, b) => a.order - b.order)
-                    .map((slot) => (
-                    <SelectItem key={slot.id} value={slot.id}>
-                      {slot.icon} {slot.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="vendors">Vendors *</Label>
+              <MultiSelect
+                options={vendors
+                  .filter((vendor) => vendor.isActive)
+                  .map((vendor) => ({
+                    value: vendor.id,
+                    label: `${vendor.name} - ${vendor.location}`,
+                    data: vendor
+                  }))}
+                selected={formData.vendors}
+                onChange={(value) => updateFormData("vendors", value)}
+                placeholder="Select vendors"
+                disabled={loading}
+                displayField="name"
+                valueField="id"
+              />
             </div>
           </div>
 

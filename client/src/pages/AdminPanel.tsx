@@ -20,7 +20,7 @@ import type {
   Order,
   User,
   Category,
-  TimeRules,
+  TimeRulesConfig,
   DashboardMetrics,
   TimeSlot,
 } from "@/types";
@@ -42,17 +42,18 @@ function AdminPanelContent() {
   const [users, setUsers] = useState<User[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
-  const [timeRules, setTimeRules] = useState<TimeRules>({});
+  const [timeRules, setTimeRules] = useState<TimeRulesConfig>({});
 
-  // Loading states
+  // Loading states - Fixed initial state
   const [loading, setLoading] = useState({
-    global: false,
-    products: false,
-    vendors: false,
-    orders: false,
-    users: false,
-    categories: false,
-    timeSlots: false,
+    global: true, // Set to true initially
+    products: true, // Set to true initially
+    vendors: true, // Set to true initially
+    orders: true, // Set to true initially
+    users: true, // Set to true initially
+    categories: true, // Set to true initially
+    timeSlots: true, // Set to true initially
+    timeRules: true, // Set to true initially
   });
 
   const { toast } = useToast();
@@ -79,6 +80,28 @@ function AdminPanelContent() {
       localStorage.setItem("admin-theme", "light");
     }
   }, [darkMode]);
+
+  // Initialize data with proper loading states
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        const rulesData = await FirebaseService.getTimeRules();
+        setTimeRules(rulesData);
+      } catch (error) {
+        console.error("Error loading time rules:", error);
+        toast({
+          title: "Warning",
+          description: "Failed to load time rules, using defaults",
+          variant: "destructive",
+        });
+        setTimeRules({});
+      } finally {
+        setLoading((prev) => ({ ...prev, timeRules: false }));
+      }
+    };
+
+    initializeData();
+  }, [toast]);
 
   // Firebase real-time listeners
   useEffect(() => {
@@ -115,10 +138,15 @@ function AdminPanelContent() {
     unsubscribers.push(unsubscribeOrders);
 
     // Users listener
+    // Replace the users listener in AdminPanel.tsx with client-side filtering:
     const unsubscribeUsers = FirebaseService.subscribeToCollection<User>(
       "users",
       (usersData) => {
-        setUsers(usersData);
+        // Filter only admin and subadmin users on the client side
+        const adminUsers = usersData.filter(
+          (user) => user.role === "admin" || user.role === "subadmin"
+        );
+        setUsers(adminUsers);
         setLoading((prev) => ({ ...prev, users: false }));
       }
     );
@@ -146,13 +174,27 @@ function AdminPanelContent() {
       );
     unsubscribers.push(unsubscribeTimeSlots);
 
-    // Load time rules
-    FirebaseService.getTimeRules().then(setTimeRules);
-
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
+
+  // Update global loading state when all individual loading states change
+  useEffect(() => {
+    const isAnyLoading = Object.entries(loading)
+      .filter(([key]) => key !== "global") // Exclude global from the check
+      .some(([_, isLoading]) => isLoading);
+
+    setLoading((prev) => ({ ...prev, global: isAnyLoading }));
+  }, [
+    loading.products,
+    loading.vendors,
+    loading.orders,
+    loading.users,
+    loading.categories,
+    loading.timeSlots,
+    loading.timeRules,
+  ]);
 
   // Dashboard metrics calculation
   const dashboardMetrics = useMemo((): DashboardMetrics => {
@@ -223,9 +265,11 @@ function AdminPanelContent() {
     orders.forEach((order) => {
       order.items.forEach((item) => {
         const product = products.find((p) => p.id === item.productId);
-        if (product) {
-          categoryOrderCount[product.category] =
-            (categoryOrderCount[product.category] || 0) + item.quantity;
+        if (product && Array.isArray(product.categories)) {
+          product.categories.forEach((category) => {
+            categoryOrderCount[category] =
+              (categoryOrderCount[category] || 0) + item.quantity;
+          });
         }
       });
     });
@@ -259,11 +303,10 @@ function AdminPanelContent() {
     };
   }, [orders, products]);
 
-  // Refresh function for dashboard
+  // Enhanced refresh function for dashboard
   const handleRefreshData = async () => {
-    setLoading((prev) => ({ ...prev, global: true }));
+    setLoading((prev) => ({ ...prev, global: true, timeRules: true }));
     try {
-      // Force refresh time rules
       const freshTimeRules = await FirebaseService.getTimeRules();
       setTimeRules(freshTimeRules);
 
@@ -278,7 +321,7 @@ function AdminPanelContent() {
         variant: "destructive",
       });
     } finally {
-      setLoading((prev) => ({ ...prev, global: false }));
+      setLoading((prev) => ({ ...prev, global: false, timeRules: false }));
     }
   };
 
@@ -568,6 +611,11 @@ function AdminPanelContent() {
   const handleDeleteTimeSlot = async (id: string) => {
     try {
       await FirebaseService.delete("timeSlots", id);
+
+      const updatedTimeRules = { ...timeRules };
+      delete updatedTimeRules[id];
+      await handleUpdateTimeRules(updatedTimeRules);
+
       toast({
         title: "Success",
         description: "Time slot deleted successfully",
@@ -582,7 +630,8 @@ function AdminPanelContent() {
     }
   };
 
-  const handleUpdateTimeRules = async (rules: TimeRules) => {
+  const handleUpdateTimeRules = async (rules: TimeRulesConfig) => {
+    setLoading((prev) => ({ ...prev, timeRules: true }));
     try {
       await FirebaseService.updateTimeRules(rules);
       setTimeRules(rules);
@@ -591,20 +640,21 @@ function AdminPanelContent() {
         description: "Time rules updated successfully",
       });
     } catch (error: any) {
+      console.error("Error updating time rules:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to update time rules",
         variant: "destructive",
       });
       throw error;
+    } finally {
+      setLoading((prev) => ({ ...prev, timeRules: false }));
     }
   };
+
   const handleRefreshProducts = async () => {
     setLoading((prev) => ({ ...prev, products: true }));
     try {
-      // Force refresh products data
-      // The real-time listener will automatically update the products
-      // You can also manually fetch data if needed
       toast({
         title: "Success",
         description: "Products data refreshed successfully",
@@ -620,6 +670,31 @@ function AdminPanelContent() {
     }
   };
 
+  const getCurrentTimeSlot = (): TimeSlot | null => {
+    const now = new Date();
+    const currentTime = now.getHours() * 60 + now.getMinutes();
+
+    return (
+      timeSlots.find((slot) => {
+        if (!slot.isActive) return false;
+
+        const [startHour, startMin] = slot.startTime.split(":").map(Number);
+        const [endHour, endMin] = slot.endTime.split(":").map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        let endMinutes = endHour * 60 + endMin;
+
+        if (endMinutes <= startMinutes) {
+          endMinutes += 24 * 60;
+          return (
+            currentTime >= startMinutes || currentTime <= endMinutes - 24 * 60
+          );
+        }
+
+        return currentTime >= startMinutes && currentTime <= endMinutes;
+      }) || null
+    );
+  };
+
   // Render main content based on active view
   const renderMainContent = () => {
     switch (activeView) {
@@ -629,7 +704,7 @@ function AdminPanelContent() {
             metrics={dashboardMetrics}
             additionalMetrics={additionalMetrics}
             orders={orders}
-            currentUser={user!} // Non-null assertion since we check user exists above
+            currentUser={user!}
             loading={loading.global}
             onViewChange={setActiveView}
             onRefresh={handleRefreshData}
@@ -641,12 +716,12 @@ function AdminPanelContent() {
             products={products}
             vendors={vendors}
             categories={categories}
-            timeSlots={timeSlots}
             loading={loading.products}
             onCreateProduct={handleCreateProduct}
             onUpdateProduct={handleUpdateProduct}
+            onUpdateVendor={handleUpdateVendor}
             onDeleteProduct={handleDeleteProduct}
-            onRefresh={handleRefreshProducts} // Add this line
+            onRefresh={handleRefreshProducts}
           />
         );
       case "vendors":
@@ -679,7 +754,6 @@ function AdminPanelContent() {
             onRefresh={async () => {
               setLoading((prev) => ({ ...prev, users: true }));
               try {
-                // The real-time listener will automatically update
                 toast({
                   title: "Success",
                   description: "Users data refreshed successfully",
@@ -718,7 +792,7 @@ function AdminPanelContent() {
             onCreateTimeSlot={handleCreateTimeSlot}
             onUpdateTimeSlot={handleUpdateTimeSlot}
             onDeleteTimeSlot={handleDeleteTimeSlot}
-            loading={loading.global}
+            loading={loading.timeRules}
           />
         );
       default:

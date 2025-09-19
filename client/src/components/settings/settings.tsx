@@ -3,20 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Timer, Globe, CheckCircle, Plus, Trash2, Edit, Clock, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import type { TimeRules, Category, TimeSlot } from "@/types"
+import type {  TimeRulesConfig, Category, TimeSlot, CategoryReference} from "@/types"
 
 interface SettingsProps {
-  timeRules: TimeRules
+  timeRules: TimeRulesConfig
   categories: Category[]
   timeSlots: TimeSlot[]
-  onUpdateTimeRules: (rules: TimeRules) => Promise<void>
+  onUpdateTimeRules: (rules: TimeRulesConfig) => Promise<void>
   onCreateTimeSlot: (timeSlot: Omit<TimeSlot, "id">) => Promise<void>
   onUpdateTimeSlot: (id: string, timeSlot: Partial<TimeSlot>) => Promise<void>
   onDeleteTimeSlot: (id: string) => Promise<void>
@@ -87,7 +86,7 @@ export function Settings({
   onDeleteTimeSlot,
   loading 
 }: SettingsProps) {
-  const [localTimeRules, setLocalTimeRules] = useState<TimeRules>(timeRules)
+  const [localTimeRules, setLocalTimeRules] = useState<TimeRulesConfig>(timeRules)
   const [saving, setSaving] = useState(false)
   const [showTimeSlotDialog, setShowTimeSlotDialog] = useState(false)
   const [editingTimeSlot, setEditingTimeSlot] = useState<TimeSlot | null>(null)
@@ -131,26 +130,59 @@ export function Settings({
   // Get available categories for current time
   const getAvailableCategories = () => {
     const currentSlot = getCurrentTimeSlot()
-    if (!currentSlot) return []
+    if (!currentSlot || !localTimeRules[currentSlot.id]) return []
     
-    const allowedCategoryIds = localTimeRules[currentSlot.id] || []
-    return categories.filter(cat => 
-      cat.isActive && allowedCategoryIds.includes(cat.id)
-    )
+    return localTimeRules[currentSlot.id].allowedCategories || []
   }
 
+  // ✅ Updated time rule change handler with proper structure
   const handleTimeRuleChange = (timeSlotId: string, categoryId: string, checked: boolean) => {
+    const timeSlot = timeSlots.find(ts => ts.id === timeSlotId)
+    if (!timeSlot) return
+
+    const category = categories.find(c => c.id === categoryId)
+    if (!category) return
+
     const newRules = { ...localTimeRules }
-    if (!newRules[timeSlotId]) {
-      newRules[timeSlotId] = []
-    }
     
-    if (checked) {
-      newRules[timeSlotId] = [...newRules[timeSlotId], categoryId]
-    } else {
-      newRules[timeSlotId] = newRules[timeSlotId].filter((id) => id !== categoryId)
+    // Initialize rule structure if it doesn't exist
+    if (!newRules[timeSlotId]) {
+      newRules[timeSlotId] = {
+        timeSlotName: timeSlot.name,
+        startTime: timeSlot.startTime,
+        endTime: timeSlot.endTime,
+        allowedCategories: [],
+        isActive: timeSlot.isActive,
+      }
     }
+
+    const categoryRef: CategoryReference = {
+      id: category.id,
+      name: category.name,
+    }
+
+    if (checked) {
+      // Add category if not already present
+      const existingIndex = newRules[timeSlotId].allowedCategories.findIndex(c => c.id === categoryId)
+      if (existingIndex === -1) {
+        newRules[timeSlotId].allowedCategories.push(categoryRef)
+      }
+    } else {
+      // Remove category
+      newRules[timeSlotId].allowedCategories = newRules[timeSlotId].allowedCategories.filter(
+        c => c.id !== categoryId
+      )
+    }
+
     setLocalTimeRules(newRules)
+  }
+
+  // ✅ Check if category is selected for a time slot
+  const isCategorySelected = (timeSlotId: string, categoryId: string): boolean => {
+    const rule = localTimeRules[timeSlotId]
+    if (!rule) return false
+    
+    return rule.allowedCategories.some(c => c.id === categoryId)
   }
 
   const handleSaveTimeRules = async () => {
@@ -247,6 +279,12 @@ export function Settings({
     setDeletingTimeSlot(timeSlotId)
     try {
       await onDeleteTimeSlot(timeSlotId)
+      
+      // ✅ Clean up rules for deleted time slot
+      const newRules = { ...localTimeRules }
+      delete newRules[timeSlotId]
+      setLocalTimeRules(newRules)
+      
     } catch (error) {
       console.error("Error deleting time slot:", error)
     } finally {
@@ -294,6 +332,30 @@ export function Settings({
         </TabsList>
 
         <TabsContent value="time-rules" className="space-y-6">
+          {/* Current Active Slot Info */}
+          {currentSlot && (
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">{currentSlot.icon}</span>
+                  <div>
+                    <h3 className="font-semibold text-primary">Currently Active: {currentSlot.label}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {convertTo12Hour(currentSlot.startTime)} - {convertTo12Hour(currentSlot.endTime)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {availableCategories.map((cat) => (
+                    <Badge key={cat.id} variant="secondary" className="text-xs">
+                      {cat.name}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -318,6 +380,11 @@ export function Settings({
                         {convertTo12Hour(slot.startTime)} - {convertTo12Hour(slot.endTime)}
                       </p>
                     </div>
+                    {localTimeRules[slot.id] && (
+                      <Badge variant="outline" className="ml-auto">
+                        {localTimeRules[slot.id].allowedCategories.length} categories
+                      </Badge>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                     {categories
@@ -327,7 +394,7 @@ export function Settings({
                         <input
                           type="checkbox"
                           id={`${slot.id}-${category.id}`}
-                          checked={localTimeRules[slot.id]?.includes(category.id) || false}
+                          checked={isCategorySelected(slot.id, category.id)}
                           onChange={(e) =>
                             handleTimeRuleChange(slot.id, category.id, e.target.checked)
                           }
@@ -361,6 +428,7 @@ export function Settings({
           </Card>
         </TabsContent>
 
+        {/* Time Slots Tab - Same as before */}
         <TabsContent value="time-slots" className="space-y-6">
           <Card>
             <CardHeader>
@@ -539,6 +607,11 @@ export function Settings({
                         <p className="text-sm text-muted-foreground">
                           {convertTo12Hour(slot.startTime)} - {convertTo12Hour(slot.endTime)}
                         </p>
+                        {localTimeRules[slot.id] && (
+                          <p className="text-xs text-muted-foreground">
+                            {localTimeRules[slot.id].allowedCategories.length} categories assigned
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

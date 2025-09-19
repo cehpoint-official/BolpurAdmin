@@ -23,7 +23,8 @@ import type {
   Order,
   User,
   Category,
-  TimeRules,
+  TimeRulesConfig,
+  TimeSlot,
 } from "@/types";
 
 export class FirebaseService {
@@ -253,14 +254,14 @@ export class FirebaseService {
         const userDoc = querySnapshot.docs[0];
         const userData = userDoc.data() as User;
 
-        // ✅ Fixed: Check against the stored password in database
+        //  Check against the stored password in database
         if (password === userData.password) {
           // Update last login
           await this.update("users", userDoc.id, {
             lastLogin: new Date().toISOString(),
           });
 
-          // ✅ Fixed: Put id after the spread to avoid overwriting
+          //  Put id after the spread to avoid overwriting
           return { ...userData, id: userDoc.id } as User;
         }
       }
@@ -271,36 +272,63 @@ export class FirebaseService {
     }
   }
 
-  // Settings
-  static async getTimeRules(): Promise<TimeRules> {
+  // Time Rules methods
+  static async getTimeRules(): Promise<TimeRulesConfig> {
     try {
       const docSnap = await getDoc(doc(db, "settings", "timeRules"));
       if (docSnap.exists()) {
-        return docSnap.data() as TimeRules;
+        return docSnap.data() as TimeRulesConfig;
       }
-      return {
-        morning: ["Vegetables", "Fruits", "Dairy"],
-        afternoon: [
-          "Groceries",
-          "Medicine",
-          "Snacks",
-          "Personal Care",
-          "Household",
-        ],
-        evening: ["Biryani", "Snacks", "Beverages"],
-      };
+      
+      return {};
     } catch (error) {
       console.error("Error getting time rules:", error);
-      throw error;
+      return {};
     }
   }
 
-  static async updateTimeRules(timeRules: TimeRules): Promise<void> {
+  static async updateTimeRules(timeRules: TimeRulesConfig): Promise<void> {
     try {
       await setDoc(doc(db, "settings", "timeRules"), timeRules);
     } catch (error) {
       console.error("Error updating time rules:", error);
       throw error;
+    }
+  }
+
+  // Get current active time slot
+  static async getCurrentActiveTimeSlot(): Promise<TimeSlot | null> {
+    try {
+      const now = new Date();
+      const currentTime = now.getHours() * 60 + now.getMinutes();
+      
+      const q = query(
+        collection(db, "timeSlots"),
+        where("isActive", "==", true)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const timeSlots = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as TimeSlot[];
+
+      return timeSlots.find(slot => {
+        const [startHour, startMin] = slot.startTime.split(':').map(Number);
+        const [endHour, endMin] = slot.endTime.split(':').map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        let endMinutes = endHour * 60 + endMin;
+        
+        if (endMinutes <= startMinutes) {
+          endMinutes += 24 * 60;
+          return currentTime >= startMinutes || currentTime <= (endMinutes - 24 * 60);
+        }
+        
+        return currentTime >= startMinutes && currentTime <= endMinutes;
+      }) || null;
+    } catch (error) {
+      console.error("Error getting current active time slot:", error);
+      return null;
     }
   }
 }
